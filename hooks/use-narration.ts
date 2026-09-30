@@ -9,6 +9,7 @@ export function useNarration(){
  const [supported,setSupported]=useState(false),[voices,setVoices]=useState<SpeechSynthesisVoice[]>([]),[voiceId,setVoiceId]=useState("default"),[rate,setRate]=useState(1),[state,setState]=useState<"idle"|"playing"|"paused">("idle"),[activeText,setActiveText]=useState(""),[error,setError]=useState("");
  const generation=useRef(0),utterance=useRef<SpeechSynthesisUtterance|null>(null),completion=useRef<()=>void>(()=>{}),watchdog=useRef<ReturnType<typeof setTimeout>|null>(null);
  const stop=useCallback(()=>{generation.current++;if(watchdog.current)clearTimeout(watchdog.current);if(typeof window!=="undefined"&&"speechSynthesis"in window)window.speechSynthesis.cancel();utterance.current=null;setState("idle");setActiveText("");},[]);
+ const reset=useCallback(()=>{stop();setVoiceId("default");setRate(1);setError("");},[stop]);
  useEffect(()=>{if(!("speechSynthesis"in window))return;setSupported(true);const refresh=()=>setVoices(window.speechSynthesis.getVoices());refresh();window.speechSynthesis.addEventListener("voiceschanged",refresh);return()=>{generation.current++;window.speechSynthesis.cancel();if(watchdog.current)clearTimeout(watchdog.current);window.speechSynthesis.removeEventListener("voiceschanged",refresh);};},[]);
  const read=useCallback((text:string,language="en")=>{
   stop();setError("");if(!("speechSynthesis"in window)){setError("Read aloud is not supported in this browser.");return;}
@@ -31,5 +32,5 @@ export function useNarration(){
  const resume=()=>{window.speechSynthesis.resume();setState("playing");};
  const chooseVoice=(id:string)=>{stop();setVoiceId(id);setError("");};
  const chooseRate=(value:number)=>{stop();setRate(value);};
- return {supported,voices,voiceId,rate,state,activeText,error,setError,read,stop,pause,resume,chooseVoice,chooseRate,completion};
+ return {supported,voices,voiceId,rate,state,activeText,error,setError,read,stop,reset,pause,resume,chooseVoice,chooseRate,completion};
 }

@@ -22,6 +22,8 @@ Use `npm run dev -- --hostname 127.0.0.1 --port 5180` for development. The servi
 - Additional PDF/EPUB files can be opened for the current visit. Those files are not uploaded or saved to a shared library.
 - Keyboard left/right page navigation and touch-sized controls.
 - Four minutes of inactivity produces a 30-second warning, then returns to the library. Active narration prevents reset.
+- Library navigation stays within the current visit. **Finish visit** clears imported books, stops narration, closes dialogs, and restores default reading preferences. The idle timer also covers the library and dialogs.
+- Landscape layouts keep reading controls visible at 1920×1080, 1366×768, and 1280×720, with 48-pixel touch targets, keyboard focus, and reduced-motion support.
 - The preloaded book and app assets are cached for offline use after the first successful online load. A footer confirms readiness. New service-worker versions activate between sessions when kiosk tabs are closed.
 
 ## Narration
@@ -37,6 +39,7 @@ Place authorized book files in `public/books`, add entries in `lib/catalog.ts`, 
 License copies are in `public/licenses`. No cloud AI or paid voice API is required.
 
 ## Checks
+`node --test scripts/test-visit-clock.mjs`
 `node node_modules/typescript/bin/tsc --noEmit`
 `npm run build`
-
+`npm run build:render`

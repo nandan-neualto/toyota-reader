@@ -28,7 +28,7 @@ export default function PDFReader({book,page,zoom,view,onReady,onText,onError,te
    }}
    if(outline)await walk(outline);
    if(dead)return;setPdf(doc);onReady({pages:doc.numPages,toc});
-  }catch(e){if(!dead){onError(e instanceof Error?e.message:"This PDF could not be opened.");onBusy(false);}}})();
+  }catch(e){if(!dead){onError(e instanceof Error&&e.name==="PasswordException"?"This PDF needs a password. Choose an unlocked copy.":"This PDF could not be opened. Check that the file is complete, then try again.");onBusy(false);}}})();
   return()=>{dead=true;destroy();};
  },[book,onReady,onText,onError,onBusy]);
  useEffect(()=>{

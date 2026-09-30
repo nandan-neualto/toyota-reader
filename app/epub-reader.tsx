@@ -24,9 +24,9 @@ export default function EpubReader({book,zoom,onReady,onLocation,onText,onBusy,o
    const walk=(items:typeof nav.toc,depth=0)=>items.forEach(item=>{toc.push({title:item.label,target:item.href,depth});if(item.subitems?.length)walk(item.subitems,depth+1);});walk(nav.toc);
    r.on("relocated",async(location:Location)=>{if(dead)return;onLocation("Section "+(location.start.index+1)+" · page "+location.start.displayed.page+" / "+location.start.displayed.total,location.atStart,location.atEnd);
     try{const contents=r.getContents() as unknown as Array<{document:Document;cfiFromRange:(range:Range)=>string}>;
-     const range=await epub!.getRange(location.start.cfi);const end=await epub!.getRange(location.end.cfi);
+     const range=await epub!.getRange(location.start.cfi);const end=await epub!.getRange(location.end.cfi);if(dead)return;
      if(range.startContainer.ownerDocument===end.endContainer.ownerDocument){range.setEnd(end.endContainer,end.endOffset);onText(range.toString());}else onText(contents[0]?.document.body.textContent||"");
-    }catch{const contents=r.getContents() as unknown as Array<{document:Document}>;onText(contents[0]?.document.body.textContent||"");}
+    }catch{if(dead)return;const contents=r.getContents() as unknown as Array<{document:Document}>;onText(contents[0]?.document.body.textContent||"");}
     onBusy(false);onActivity();
    });
    r.hooks.content.register((contents:{document:Document})=>{contents.document.addEventListener("pointerdown",onActivity);contents.document.addEventListener("keydown",onActivity);});
