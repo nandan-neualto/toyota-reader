@@ -10,6 +10,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 24.15.0
+      - key: LIBRARY_REDIRECT_URL
+        value: https://toyota-employee-library.onrender.com/
     headers:
       - path: /sw.js
         name: Cache-Control

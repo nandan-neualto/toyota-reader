@@ -1,6 +1,6 @@
 # Render hosting: employee library
 
-The employee library needs a Node web service and persistent PostgreSQL. Use the new `render-library.yaml` Blueprint. The existing `render.yaml` remains the legacy guest-only static configuration; it cannot run the account API.
+The employee library needs a Node web service and persistent PostgreSQL. Use the new `render-library.yaml` Blueprint. The existing `render.yaml` retains the legacy static site and forwards visitors to `https://toyota-employee-library.onrender.com/`; it cannot run the account API.
 
 Use Node.js 24.15.0, build command `npm ci --include=dev && npm run build:render`, start command `npm start`, and health path `/api/health`. The server binds Render’s `PORT` on `0.0.0.0` and serves `.next-render` with the library API. The web-service plan is free.
 
@@ -15,3 +15,5 @@ Free web services may sleep when idle, making the first sign-in slower. Cold sig
 The local Cloudflare build remains available with `npm run build` and `npm run start:cloudflare`; the Node gateway presents its frontend and library API on 5180.
 
 The initial free deployment uses Oregon and separate `library_*` tables in the existing `toyota-survey-db` instance. It does not change survey tables. Its library upload budget is 256 MB to leave database space for survey responses and reading records. Render reports that the free database expires on 29 October 2026; arrange a backup or replacement before that date. The administrator credentials are saved locally in the ignored `.library-data/render-admin.txt`, not in Git.
+
+The legacy static service sets the nonsecret `LIBRARY_REDIRECT_URL` in `render.yaml`. Its build publishes a small forwarding page with a browser redirect, a no-JavaScript refresh, and a visible library link. Render redirect rules do not override an existing `index.html`, so the forwarding page handles the old home URL directly. The setting accepts only HTTPS URLs without embedded credentials. Leave it unset on the employee Node service to build the full library normally. To apply this to an existing legacy service, also set the variable in its Render environment settings and redeploy; editing the Blueprint alone does not update services that were created manually.
