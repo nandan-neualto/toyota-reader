@@ -53,6 +53,7 @@ export default defineConfig(async ({ command }) => {
 
   return {
     server: {
+      proxy: { "/api": { target: "http://127.0.0.1:5181", changeOrigin: false } },
       ...(managedLinux
         ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] }
         : {}),

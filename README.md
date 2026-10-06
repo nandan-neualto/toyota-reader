@@ -1,4 +1,6 @@
-# Toyota Reading Room
+# Toyota Employee Library
+
+The reader now includes employee ID + PIN sign-in, persistent reading progress, private notes, bookmarks, favorites and a shared book catalog. Administrators can upload batches of books and manage employee accounts. See [EMPLOYEE_LIBRARY.md](EMPLOYEE_LIBRARY.md) for setup, account management, offline behavior and production storage.
 
 A separate React/TypeScript touchscreen kiosk for reading and listening to PDF and EPUB books.
 
@@ -9,11 +11,11 @@ The supplied 481-page PDF is bundled at `public/books/toyota-way-continuous-impr
 Requires Node.js 22.13 or newer.
 
 1. `npm ci`
-2. `npm run build`
-3. `npm start -- --port 5180`
+2. `npm run build:render`
+3. `npm start`
 4. Open `http://127.0.0.1:5180` and use the full-screen button or browser kiosk mode.
 
-Use `npm run dev -- --hostname 127.0.0.1 --port 5180` for development. The service worker runs only in a production build.
+Use `npm run dev` for development (frontend 5180, API 5181). The first local start generates a `LIBRARY-ADMIN` account and saves its initial PIN in the ignored `.library-data/local-admin.txt`. The service worker runs only in a production build. The Cloudflare build remains available with `npm run build` and `npm run start:cloudflare`.
 
 ## Reader features
 - Original PDF rendering, zoom, selectable text view, embedded contents and direct page jumps.
@@ -30,7 +32,7 @@ Use `npm run dev -- --hostname 127.0.0.1 --port 5180` for development. The servi
 Uses the operating system/browser Speech Synthesis API. Install the required voices on the kiosk. Device voices can work offline; network voices need a connection. Voice changes do not translate the book. Image-only/scanned pages without an embedded text layer cannot be narrated; OCR is not included. Sound is off until the visitor presses Read aloud.
 
 ## More preloaded books
-Place authorized book files in `public/books`, add entries in `lib/catalog.ts`, and add them to the initial shelf in `app/reading-room.tsx`. Rebuild to update the offline cache. For a production museum collection, use the institution’s approved book copies.
+Sign in as an administrator and choose **Manage library** to upload up to 100 books per batch, edit metadata, and archive or restore titles. Uploaded files persist in the database. Use the institution’s approved book copies.
 
 ## Open source
 - [Mozilla PDF.js](https://github.com/mozilla/pdf.js): Apache-2.0; original PDF rendering and text extraction.
@@ -43,3 +45,5 @@ License copies are in `public/licenses`. No cloud AI or paid voice API is requir
 `node node_modules/typescript/bin/tsc --noEmit`
 `npm run build`
 `npm run build:render`
+`npm run test:library`
+`npm run test:browser` (install Playwright Chromium first)

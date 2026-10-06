@@ -8,12 +8,15 @@
   "scripts": {
     "build:render": "node scripts/build-render.mjs",
     "install:ci": "node scripts/install-ci.mjs",
-    "dev": "node scripts/run-framework.mjs dev",
+    "dev": "node scripts/dev-library.mjs",
     "build": "node scripts/prepare-reader.mjs && node scripts/run-framework.mjs build && node scripts/write-cache.mjs",
-    "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
+    "start": "node server/library-server.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "prepare:reader": "node scripts/prepare-reader.mjs"
+    "prepare:reader": "node scripts/prepare-reader.mjs",
+    "start:cloudflare": "node scripts/start-cloudflare-library.mjs",
+    "test:library": "node --test scripts/test-library-server.mjs scripts/test-employee-csv.mjs scripts/test-visit-clock.mjs",
+    "test:browser": "node --test scripts/test-library-browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -25,10 +28,13 @@
     "date-fns": "^4.4.0",
     "drizzle-orm": "0.45.2",
     "embla-carousel-react": "^8.6.0",
+    "epubjs": "0.3.93",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",
     "next": "16.3.4",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "6.3.289",
+    "pg": "^8.23.1",
     "radix-ui": "^1.6.7",
     "react": "19.2.6",
     "react-day-picker": "^10.0.1",
@@ -39,9 +45,7 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "3.6.0",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76",
-    "pdfjs-dist": "6.3.289",
-    "epubjs": "0.3.93"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
@@ -56,6 +60,7 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",
     "json-rpc-2.0": "1.7.1",
+    "playwright": "^1.62.1",
     "raw-body": "3.0.2",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
