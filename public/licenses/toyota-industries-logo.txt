@@ -1,0 +1,12 @@
+Toyota Industries Group logo
+
+The circle/parallelogram symbol and italic TOYOTA wordmark use vector paths from:
+https://commons.wikimedia.org/wiki/File:Toyota_Industries_logo.svg
+Original cited source: Toyota Industries Annual Report 2009.
+Direct vector: https://upload.wikimedia.org/wikipedia/commons/7/76/Toyota_Industries_logo.svg
+
+The black TOYOTA INDUSTRIES GROUP caption was reconstructed in SVG text
+using the user-supplied Group logo as the visual reference. The reference
+purple is #2500ab. This is an application asset, not a claim that the
+reconstructed complete lockup is newly supplied official artwork.
+The brand and trademarks belong to their respective owner.

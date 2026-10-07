@@ -7,11 +7,11 @@ import ReadingRoom from "./reading-room";
 export default function EmployeeReader(){
  const library=useEmployeeLibrary();
  const [id,setId]=useState(""),[pin,setPin]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
- if(library.checking)return <div className="employee-loading" role="status"><img src="/toyota-logo.svg" alt="Toyota"/><LoaderCircle className="reader-spinner"/><p>{library.closing?"Saving your progress and signing out…":"Opening your library…"}</p></div>;
+ if(library.checking)return <div className="employee-loading" role="status"><img src="/toyota-industries-group.svg" alt="Toyota Industries Group" width={330} height={110}/><LoaderCircle className="reader-spinner"/><p>{library.closing?"Saving your progress and signing out…":"Opening your library…"}</p></div>;
  if(library.user||library.guest)return <ReadingRoom key={library.user?.id||"guest"} library={library}/>;
  async function login(event:React.FormEvent){event.preventDefault();setBusy(true);setError("");try{await library.login(id,pin);setPin("");}catch(error){setError(error instanceof Error?error.message:"Could not sign in. Try again.");}finally{setBusy(false);}}
  return <div className="employee-entry">
-  <header className="entry-header"><img src="/toyota-logo.svg" alt="Toyota"/><span>EMPLOYEE LIBRARY</span><span className="entry-topline">Ideas that move us forward.</span></header>
+  <header className="entry-header"><img src="/toyota-industries-group.svg" alt="Toyota Industries Group" width={330} height={110}/><span>EMPLOYEE LIBRARY</span><span className="entry-topline">Ideas that move us forward.</span></header>
   <main className="entry-main"><section className="entry-story"><p className="eyebrow">LEARN. REFLECT. KEEP IMPROVING.</p><h1>Your next chapter<br/>starts here<span>.</span></h1><p className="entry-intro">A shared library for Toyota employees. Discover something useful today, and pick up where you left off tomorrow.</p>
    <div className="entry-benefits"><div><BookOpen/><span><strong>A growing collection</strong><small>PDFs and EPUBs, organized for easy discovery.</small></span></div><div><Bookmark/><span><strong>Your own reading space</strong><small>Progress, bookmarks, favorites and private notes.</small></span></div><div><Headphones/><span><strong>Read or listen</strong><small>Keep learning at a pace that works for you.</small></span></div></div>
    <div className="entry-art" aria-hidden="true"><div>THE TOYOTA WAY<small>Continuous improvement<br/>begins with curiosity.</small><span>01 / LEARNING TOGETHER</span></div><div>KAIZEN<small>Small steps.<br/>Lasting change.</small><span>TOYOTA LIBRARY</span></div></div>
