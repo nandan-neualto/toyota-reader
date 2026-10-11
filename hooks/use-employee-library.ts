@@ -3,9 +3,13 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import {featuredBook,type BookEntry} from "@/lib/catalog";
 import {api,ApiError,bindEmployee,emptyRecord,readProfile,writeProfile,catalogCache,cachedFile,storeFile,type Employee,type ProfileStore,type ReadingRecord} from "@/lib/employee-library";
 
+import {trackReadingLocation,type ReadingLocation} from "@/lib/reading-progress.mjs";
+
 export function useEmployeeLibrary(){
  const [user,setUser]=useState<Employee|null>(null),[checking,setChecking]=useState(true),[guest,setGuest]=useState(false);
  const [books,setBooks]=useState<BookEntry[]>([featuredBook]),[records,setRecords]=useState<ProfileStore["records"]>({});
+ const [historyBooks,setHistoryBooks]=useState<BookEntry[]>([]);
+ const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const [pendingCount,setPendingCount]=useState(0),[syncing,setSyncing]=useState(false),[message,setMessage]=useState("");
  const [deviceSaved,setDeviceSaved]=useState(true),storageWorks=useRef(true);
  const [closing,setClosing]=useState(false),completion=useRef<Promise<void>>(Promise.resolve());
@@ -13,7 +17,7 @@ export function useEmployeeLibrary(){
  const person=useRef<Employee|null>(null),store=useRef<ProfileStore>({records:{},pending:{}}),running=useRef(false),generation=useRef(0),conflictRef=useRef<Record<string,ReadingRecord>>({});
  const volatileProfiles=useRef<Record<string,ProfileStore>>({});
  const channelRef=useRef<BroadcastChannel|null>(null),closingNow=useRef(false);
- const publish=useCallback(()=>{setRecords({...store.current.records});setPendingCount(Object.keys(store.current.pending).length);},[]);
+ const publish=useCallback(()=>{setRecords({...store.current.records});setHistoryBooks(store.current.books||[]);setPendingCount(Object.keys(store.current.pending).length);},[]);
  const persist=useCallback(()=>{if(!person.current)return;try{writeProfile(person.current.id,store.current);storageWorks.current=true;setDeviceSaved(true);}catch{storageWorks.current=false;setDeviceSaved(false);setMessage("Device storage is unavailable. Keep this page open until your changes reach the server.");}publish();},[publish]);
  const flush=useCallback(async()=>{
   const employee=person.current;if(!employee)return;if(running.current){await completion.current;return;}
@@ -45,7 +49,7 @@ export function useEmployeeLibrary(){
   conflictRef.current={};setConflicts({});
   try{store.current=volatileProfiles.current[employee.id]||readProfile(employee.id);}catch{store.current={records:{},pending:{}};setMessage("Local cache could not be read. Loading your server progress.");}publish();
   try{
-   const [catalog,profile]=await Promise.all([api<{books:BookEntry[]}>("/api/catalog"),api<{records:ProfileStore["records"]}>("/api/profile")]);
+   const [catalog,profile]=await Promise.all([api<{books:BookEntry[]}>("/api/catalog"),api<{records:ProfileStore["records"];books?:BookEntry[]}>("/api/profile")]);
    if(epoch!==generation.current)return;
    setBooks(catalog.books);try{catalogCache(employee.id,catalog.books);}catch{}
    const merged={...profile.records};
@@ -55,7 +59,7 @@ export function useEmployeeLibrary(){
     merged[id]=pending.record;
     if(cloud.version!==pending.expectedVersion)conflictRef.current[id]=cloud;
    }
-   store.current.records=merged;setConflicts({...conflictRef.current});persist();void flush();
+   store.current.records=merged;store.current.books=profile.books||catalog.books.filter(book=>!!merged[book.id]);setConflicts({...conflictRef.current});persist();void flush();
   }catch(error){
    if(epoch!==generation.current)return;
    try{setBooks(catalogCache(employee.id));}catch{setBooks([featuredBook]);}
@@ -71,13 +75,13 @@ export function useEmployeeLibrary(){
  const logout=useCallback(async()=>{
   if(closingNow.current)return;closingNow.current=true;
   // Hide the account while the last save completes; revoke the session afterward.
-  setClosing(true);setChecking(true);
+  setClosing(true);setChecking(true);if(saveTimer.current)clearTimeout(saveTimer.current);
   const signoutId=person.current?.id;
   const before=Object.values(store.current.pending).map(p=>p.mutationId).join(',');await flush();
   if(Object.keys(store.current.pending).length&&before!==Object.values(store.current.pending).map(p=>p.mutationId).join(','))await flush();
   const memoryOnly=!!person.current&&!storageWorks.current&&!!Object.keys(store.current.pending).length;
   if(memoryOnly)volatileProfiles.current[person.current!.id]=store.current;
-  generation.current++;person.current=null;setUser(null);setGuest(false);store.current={records:{},pending:{}};setRecords({});setPendingCount(0);setSyncing(false);conflictRef.current={};setConflicts({});setBooks([featuredBook]);setMessage("");
+  generation.current++;person.current=null;setUser(null);setGuest(false);setHistoryBooks([]);store.current={records:{},pending:{}};setRecords({});setPendingCount(0);setSyncing(false);conflictRef.current={};setConflicts({});setBooks([featuredBook]);setMessage("");
   if(signoutId)channelRef.current?.postMessage({type:"sign-out",id:signoutId});
   try{localStorage.setItem("toyota-library-signed-out",signoutId||"1");}catch{}
   try{await api("/api/logout",{method:"POST",body:"{}",signal:AbortSignal.timeout(8000),headers:signoutId?{"X-Library-User":signoutId}:{}});localStorage.removeItem("toyota-library-signed-out");if(memoryOnly)setMessage("Some changes are only in this tab. Keep it open and sign in again when online to sync them.");}catch{setMessage(memoryOnly?"Some changes are only in this tab. Keep it open and sign in again when online to sync them.":"You are signed out on this screen. Reconnect so the server can finish ending your session.");}finally{bindEmployee(null);closingNow.current=false;setClosing(false);setChecking(false);}
@@ -88,14 +92,25 @@ export function useEmployeeLibrary(){
   const old=store.current.records[bookId]||emptyRecord();const record={...old,...change};
   const previous=store.current.pending[bookId];
   store.current.records[bookId]=record;store.current.pending[bookId]={record,expectedVersion:previous?.expectedVersion??old.version,mutationId:crypto.randomUUID()};persist();
- },[persist]);
+  if(saveTimer.current)clearTimeout(saveTimer.current);saveTimer.current=setTimeout(()=>{void flush();},700);
+ },[persist,flush]);
+ const recordLocation=useCallback((bookId:string,location:ReadingLocation)=>{
+  if(!person.current)return;update(bookId,trackReadingLocation(store.current.records[bookId]||emptyRecord(),location));
+ },[update]);
+ useEffect(()=>{const saveWhenHidden=()=>{if(document.visibilityState==="hidden")void flush();};document.addEventListener("visibilitychange",saveWhenHidden);window.addEventListener("pagehide",flush);return()=>{document.removeEventListener("visibilitychange",saveWhenHidden);window.removeEventListener("pagehide",flush);if(saveTimer.current)clearTimeout(saveTimer.current);};},[flush]);
  const resolveConflict=useCallback((bookId:string,useLocal:boolean)=>{
   const cloud=conflictRef.current[bookId];if(!cloud)return;
   if(useLocal&&store.current.pending[bookId]){store.current.pending[bookId].expectedVersion=cloud.version;store.current.pending[bookId].mutationId=crypto.randomUUID();}
   else{store.current.records[bookId]=cloud;delete store.current.pending[bookId];}
   delete conflictRef.current[bookId];setConflicts({...conflictRef.current});persist();void flush();
  },[persist,flush]);
- const refresh=useCallback(async()=>{const result=await api<{books:BookEntry[]}>("/api/catalog");setBooks(result.books);if(person.current)try{catalogCache(person.current.id,result.books);}catch{}},[]);
+ const refresh=useCallback(async()=>{
+  const employee=person.current,epoch=generation.current;if(!employee)return;
+  const [catalog,profile]=await Promise.all([api<{books:BookEntry[]}>("/api/catalog"),api<{books?:BookEntry[]}>("/api/profile")]);
+  if(epoch!==generation.current||person.current?.id!==employee.id)return;
+  setBooks(catalog.books);store.current.books=profile.books||catalog.books.filter(book=>!!store.current.records[book.id]);persist();
+  try{catalogCache(employee.id,catalog.books);}catch{}
+ },[persist]);
  const loadBook=useCallback(async(book:BookEntry)=>{
   if(!person.current||book.file)return book;
   const id=person.current.id;
@@ -106,6 +121,6 @@ export function useEmployeeLibrary(){
   return {...book,file};
  },[]);
  const download=useCallback(async(book:BookEntry)=>{if(!person.current)return;const id=person.current.id,entry=await loadBook(book);let file=entry.file;if(!file){const response=await fetch(entry.url!);if(!response.ok)throw new Error("The book could not be downloaded.");file=new File([await response.blob()],book.title+"."+book.format);}if(person.current?.id!==id)throw new Error("Your account changed before the download finished. Try again after signing in.");await storeFile(id,book.id,file);},[loadBook]);
- return {user,checking,closing,guest,setGuest,books,records,pendingCount,syncing,deviceSaved,message,conflicts,login,logout,update,flush,refresh,resolveConflict,loadBook,download};
+ return {user,checking,closing,guest,setGuest,books,historyBooks,records,pendingCount,syncing,deviceSaved,message,conflicts,login,logout,update,recordLocation,flush,refresh,resolveConflict,loadBook,download};
 }
 export type EmployeeLibrary=ReturnType<typeof useEmployeeLibrary>;

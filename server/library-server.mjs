@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { Readable } from 'node:stream';
 import { openDatabase } from './database.mjs';
 import { clientAddress } from './client-address.mjs';
+import {normalizeReadRanges,mergeReadingHistory} from '../lib/reading-progress.mjs';
 
 const derive = promisify(scrypt), now = () => new Date().toISOString();
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -60,7 +61,11 @@ function cleanRecord(input) {
   if (cfi && !/^epubcfi\([\s\S]+\)$/.test(cfi)) fail(400, 'Invalid EPUB position.');
   const bookmarks = input.bookmarks ?? [];
   if (!Array.isArray(bookmarks) || bookmarks.length > 100) fail(400, 'Use at most 100 bookmarks per book.');
-  return { page, total, percent, cfi, started: !!input.started, completed: !!input.completed, favorite: !!input.favorite,
+  const tracking={};
+  if(input.readRanges!==undefined){try{tracking.readRanges=normalizeReadRanges(input.readRanges,total);}catch{fail(400,'Invalid page coverage.');}}
+  if(input.furthestPage!==undefined){if(!Number.isInteger(input.furthestPage)||input.furthestPage<0||input.furthestPage>1000000)fail(400,'Invalid furthest page.');tracking.furthestPage=input.furthestPage;}
+  if(input.furthestPercent!==undefined){if(!Number.isFinite(input.furthestPercent)||input.furthestPercent<0||input.furthestPercent>100)fail(400,'Invalid furthest progress.');tracking.furthestPercent=input.furthestPercent;}
+  return { ...tracking, page, total, percent, cfi, started: !!input.started, completed: !!input.completed, favorite: !!input.favorite,
     notes: string(input.notes ?? '', 'notes', 20000, false), bookmarks: bookmarks.map(b => {if(!b||typeof b!=='object')fail(400,'Invalid bookmark.');const cfi=string(b.cfi??'', 'bookmark location',2048,false);if(cfi&&!/^epubcfi\([\s\S]+\)$/.test(cfi))fail(400,'Invalid bookmark location.');return { id: string(b.id, 'bookmark ID', 80), label: string(b.label, 'bookmark label', 160), page: Math.max(1, Math.min(1000000, Math.trunc(Number(b.page) || 1))), cfi };}),
     lastReadAt: typeof input.lastReadAt === 'string' && Number.isFinite(Date.parse(input.lastReadAt)) ? input.lastReadAt : null };
 }
@@ -151,22 +156,25 @@ export async function createLibraryServer(options = {}) {
       if (path === '/api/catalog' && method === 'GET') return send(res,200,{books:(await db.query(`SELECT ${bookColumns} FROM library_books WHERE active=1 ORDER BY created_at DESC,title`)).map(publicBook)});
       if (path === '/api/profile' && method === 'GET') {
         const rows = await db.query('SELECT book_id,record,version,mutation_id,updated_at FROM library_reading WHERE user_id=$1',[user.id]);
-        return send(res,200,{records:Object.fromEntries(rows.map(row=>[row.book_id,readingRow(row)]))});
+        const columns=bookColumns.split(',').map(column=>'b.'+column).join(',');
+        const books=(await db.query('SELECT '+columns+' FROM library_books b JOIN library_reading r ON r.book_id=b.id WHERE r.user_id=$1 ORDER BY b.title',[user.id])).map(publicBook);
+        return send(res,200,{records:Object.fromEntries(rows.map(row=>[row.book_id,readingRow(row)])),books});
       }
       const reading = /^\/api\/reading\/([\w-]+)$/.exec(path);
       if (reading && method === 'PUT') {
         const input = await body(req), record = cleanRecord(input.record), mutation = string(input.mutationId,'save ID',80);
         if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) fail(400,'Invalid save version.');
         const result = await db.transaction(async q => {
-          const [book] = await q('SELECT id FROM library_books WHERE id=$1 AND active=1',[reading[1]]); if (!book) fail(404,'This book is no longer in the active library.');
+          // Archived books can still receive offline account saves; catalogue and file access remain restricted.
+          const [book] = await q('SELECT id FROM library_books WHERE id=$1',[reading[1]]); if (!book) fail(404,'Book unavailable.');
           await q(`INSERT INTO library_reading(user_id,book_id,record,version,mutation_id,updated_at) VALUES($1,$2,$3,0,'',$4) ON CONFLICT(user_id,book_id) DO NOTHING`,[user.id,reading[1],JSON.stringify(cleanRecord({})),now()]);
           const lock = db.kind === 'postgres' ? ' FOR UPDATE' : '';
           const [old] = await q('SELECT * FROM library_reading WHERE user_id=$1 AND book_id=$2' + lock,[user.id,reading[1]]);
           if (old.mutation_id === mutation) return { status:200, record:readingRow(old) };
           if (old.version !== input.expectedVersion) return {status:409,record:readingRow(old)};
-          const updated = now(), version = old.version + 1;
-          await q('UPDATE library_reading SET record=$1,version=$2,mutation_id=$3,updated_at=$4 WHERE user_id=$5 AND book_id=$6',[JSON.stringify(record),version,mutation,updated,user.id,reading[1]]);
-          return {status:200,record:{...record,version,updatedAt:updated,lastMutationId:mutation}};
+          const updated = now(), version = old.version + 1, saved=mergeReadingHistory(JSON.parse(old.record),record);
+          await q('UPDATE library_reading SET record=$1,version=$2,mutation_id=$3,updated_at=$4 WHERE user_id=$5 AND book_id=$6',[JSON.stringify(saved),version,mutation,updated,user.id,reading[1]]);
+          return {status:200,record:{...saved,version,updatedAt:updated,lastMutationId:mutation}};
         });
         return send(res,result.status,{record:result.record,...(result.status===409?{error:'This book was updated on another device. Choose which copy to keep.'}:{})});
       }
@@ -182,7 +190,7 @@ export async function createLibraryServer(options = {}) {
         const books=(await db.query(`SELECT ${bookColumns} FROM library_books ORDER BY created_at DESC,title`)).map(publicBook);
         const started=db.kind==='postgres'?"(record::jsonb ->> 'started')='true'":"json_extract(record,'$.started')=1";
         const usage=await db.query('SELECT book_id,COUNT(*) AS readers FROM library_reading WHERE '+started+' GROUP BY book_id');
-        return send(res,200,{books,usage:Object.fromEntries(usage.map(row=>[row.book_id,Number(row.readers)]))});
+        return send(res,200,{books,usage:Object.fromEntries(usage.map(row=>[row.book_id,Number(row.readers)])),storage:{usedBytes:books.reduce((sum,book)=>sum+Number(book.bytes||0),0),limitBytes:Number(process.env.LIBRARY_MAX_BYTES||1024*1024*1024)}});
       }
       if (path === '/api/admin/books' && method === 'POST') {
         const filename=string(url.searchParams.get('filename'),'filename',250), format=filename.split('.').pop().toLowerCase();

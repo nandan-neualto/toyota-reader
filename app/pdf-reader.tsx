@@ -3,14 +3,15 @@ import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import type { BookEntry, TocEntry } from "@/lib/catalog";
 export type PDFReady = {pages:number; toc:TocEntry[]};
-type Props={book:BookEntry;page:number;zoom:number;view:"page"|"text";onReady:(data:PDFReady)=>void;onText:(text:string)=>void;onError:(message:string)=>void;text:string;activeText?:string;onBusy:(busy:boolean)=>void};
-export default function PDFReader({book,page,zoom,view,onReady,onText,onError,text,activeText,onBusy}:Props){
+type Props={book:BookEntry;page:number;zoom:number;view:"page"|"text";onReady:(data:PDFReady)=>void;onText:(text:string)=>void;onError:(message:string)=>void;text:string;activeText?:string;onBusy:(busy:boolean)=>void;onViewed:(page:number,total:number)=>void};
+export default function PDFReader({book,page,zoom,view,onReady,onText,onError,text,activeText,onBusy,onViewed}:Props){
  const canvas=useRef<HTMLCanvasElement>(null),container=useRef<HTMLDivElement>(null);
- const [pdf,setPdf]=useState<PDFDocumentProxy|null>(null),[width,setWidth]=useState(700);
+ const [loaded,setLoaded]=useState<{book:BookEntry;pdf:PDFDocumentProxy}|null>(null),[width,setWidth]=useState(700);
+ const pdf=loaded?.book===book?loaded.pdf:null;
  useEffect(()=>{const el=container.current;if(!el)return;const obs=new ResizeObserver(()=>setWidth(Math.max(260,el.clientWidth-48)));obs.observe(el);return()=>obs.disconnect();},[]);
  useEffect(()=>{
   let dead=false;let doc:PDFDocumentProxy|undefined;let destroy:()=>void=()=>{};
-  setPdf(null);onBusy(true);onText("");
+  onBusy(true);onText("");
   (async()=>{try{
    const lib=await import("pdfjs-dist");
    if(dead)return;
@@ -27,7 +28,7 @@ export default function PDFReader({book,page,zoom,view,onReady,onText,onError,te
     }catch{}if(item.items?.length)await walk(item.items,depth+1);
    }}
    if(outline)await walk(outline);
-   if(dead)return;setPdf(doc);onReady({pages:doc.numPages,toc});
+   if(dead)return;setLoaded({book,pdf:doc});onReady({pages:doc.numPages,toc});
   }catch(e){if(!dead){onError(e instanceof Error&&e.name==="PasswordException"?"This PDF needs a password. Choose an unlocked copy.":"This PDF could not be opened. Check that the file is complete, then try again.");onBusy(false);}}})();
   return()=>{dead=true;destroy();};
  },[book,onReady,onText,onError,onBusy]);
@@ -46,10 +47,10 @@ export default function PDFReader({book,page,zoom,view,onReady,onText,onError,te
     render=p.render({canvas:c,viewport:vp,transform:dpr!==1?[dpr,0,0,dpr,0,0]:undefined});
     await render.promise;
    }
-   if(!cancelled)onBusy(false);
+   if(!cancelled){onViewed(page,pdf.numPages);onBusy(false);}
   }catch(e){if(!cancelled&&!(e instanceof Error&&e.name==="RenderingCancelledException")){onError("Could not display this page. Try another page or reopen the book.");onBusy(false);}}})();
   return()=>{cancelled=true;render?.cancel();};
- },[pdf,page,zoom,width,view,onBusy,onText,onError]);
+ },[pdf,page,zoom,width,view,onBusy,onText,onError,onViewed]);
  return <div ref={container} className={"document-stage "+(view==="text"?"text-stage":"")} tabIndex={0} aria-label={"Book page "+page}>
   {view==="page"?<canvas ref={canvas} aria-label={"Original PDF page "+page} role="img"/>:<article className="reading-text" style={{fontSize:22*zoom}}>{text?text.split(/\n\s*\n/).map((p,i)=><p key={i}>{p}</p>):<p>No readable text on this page. Use the original page view.</p>}</article>}
   {activeText&&<div className="spoken-line" role="status"><span>READING NOW</span>{activeText}</div>}
