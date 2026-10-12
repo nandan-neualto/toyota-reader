@@ -1,0 +1,57 @@
+.personal-space { min-width: 0; }
+.personal-save-status { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px; padding: 13px; border-radius: 9px; background: #f2f7f3; color: #315f47; font-size: 12px; line-height: 1.6; }
+.personal-save-status svg { flex: 0 0 auto; margin-top: 1px; }
+.personal-save-status[data-warning] { color: #7b4e1f; background: #fff6e8; }
+.personal-space .personal-sync { margin-top: 8px; font-size: 12px; }
+.personal-save-detail { font-size: 12px; line-height: 1.6; color: #745d40; margin-top: 9px; overflow-wrap: anywhere; }
+.personal-notes-section { gap: 10px; }
+.personal-notes-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; color: #697b89; font-size: 11px; line-height: 1.6; }
+.personal-notes-meta p { margin: 0; }
+.personal-notes-meta span { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.personal-notes-meta [data-near-limit] { color: #885019; font-weight: 600; }
+.personal-space .personal-limit { font-size: 12px; color: #885019; }
+.personal-space .personal-export { justify-content: center; width: 100%; font-size: 12px; margin-top: 6px; }
+.personal-space .personal-export-help { font-size: 11px; line-height: 1.6; margin: 0; color: #697b89; }
+.personal-bookmarks-enhanced { margin-top: 26px; padding-top: 22px; border-top: 1px solid #e1e7ed; }
+.personal-bookmarks-enhanced .personal-bookmark-heading { flex-wrap: wrap; gap: 10px; margin-bottom: 13px; }
+.personal-bookmark-heading h3 { display: flex; align-items: center; gap: 8px; }
+.personal-bookmark-heading h3 span { color: #738291; font-size: 11px; font-weight: 400; }
+.personal-bookmark-hint { font-size: 12px; line-height: 1.6; color: #6c7b8b; margin-bottom: 12px; }
+.personal-bookmark-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.personal-bookmark-tools label { display: flex; flex-direction: column; gap: 7px; font-size: 11px; font-weight: 550; color: #536878; min-width: 0; }
+.personal-bookmark-tools label.personal-search { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 9px; padding-left: 12px; border: 1px solid #d9e0e8; border-radius: 8px; background: #fff; }
+.personal-search svg { flex-shrink: 0; color: #738391; }
+.personal-search input { width: 100%; min-width: 0; border: 0; background: transparent; min-height: 48px; padding: 10px 8px 10px 0; font-size: 13px; font-weight: 400; }
+.personal-search:focus-within { outline: 3px solid var(--brand-primary); outline-offset: 2px; }
+.personal-search input:focus-visible { outline: none; }
+.personal-bookmark-tools select, .bookmark-rename input { width: 100%; min-height: 48px; min-width: 0; border: 1px solid #d9e0e8; border-radius: 7px; background: white; color: #405969; padding: 10px; font: inherit; font-size: 12px; font-weight: 400; }
+.personal-filter-count { grid-column: 1 / -1; font-size: 11px; color: #6b7e8d; margin: 0; }
+.personal-bookmark-item { display: flex; align-items: center; gap: 4px; padding: 8px 0; border-bottom: 1px solid #e7edf2; }
+.personal-bookmark-open { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 56px; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; text-align: left; color: #41596c; }
+.personal-bookmark-open>svg { flex-shrink: 0; color: var(--brand-primary); }
+.personal-bookmark-open span { min-width: 0; }
+.personal-bookmark-open strong { display: block; font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.personal-bookmark-open small { display: block; color: #758591; font-size: 10px; margin-top: 5px; line-height: 1.5; }
+.personal-bookmark-actions { display: flex; flex-shrink: 0; gap: 2px; }
+.personal-bookmark-actions .icon-button { width: 48px; height: 48px; min-width: 48px; }
+.bookmark-rename { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.bookmark-rename label { display: flex; flex-direction: column; gap: 7px; color: #536878; font-size: 12px; font-weight: 500; }
+.bookmark-rename>div { display: flex; flex-wrap: wrap; gap: 8px; }
+.personal-bookmark-empty { display: flex; align-items: flex-start; flex-direction: column; gap: 9px; padding: 22px 17px; border: 1px dashed #d9e0e8; border-radius: 9px; color: #768494; }
+.personal-bookmark-empty svg { color: var(--brand-primary); }
+.personal-bookmark-empty strong { font-size: 13px; font-weight: 550; color: #435e70; }
+.personal-bookmark-empty p { font-size: 12px; line-height: 1.7; margin: 0; }
+.personal-bookmark-undo { display: flex; align-items: center; justify-content: space-between; gap: 9px; margin-top: 12px; padding: 8px 10px; border: 1px solid #e0d9ef; border-radius: 8px; background: var(--brand-soft); }
+.personal-bookmark-undo span { min-width: 0; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; color: #5d4977; }
+.personal-bookmark-undo button { flex-shrink: 0; }
+.personal-action-notice { min-height: 18px; font-size: 12px; line-height: 1.6; color: #536d60; margin-top: 12px; }
+.personal-space button, .personal-space select { min-height: 48px; }
+.personal-space :is(button,input,select):focus-visible { outline: 3px solid var(--brand-primary); outline-offset: 3px; }
+.personal-space .personal-search input:focus-visible { outline: none; }
+@media (max-width: 380px) {
+ .personal-bookmark-tools { gap: 9px; }
+ .personal-bookmark-item { flex-wrap: wrap; }
+ .personal-bookmark-open { flex-basis: 100%; }
+ .personal-bookmark-actions { margin-left: auto; }
+ .personal-notes-meta { flex-direction: column; gap: 3px; }
+}

@@ -1,12 +1,13 @@
 import type {BookEntry} from "./catalog";
 import {normalizeReadRanges} from "./reading-progress.mjs";
+import {isGoalDate} from "./reading-plans.mjs";
 
 export type Employee = {id:string; employeeId:string; name:string; role:"admin"|"employee"; active:boolean};
 export type Bookmark = {id:string;label:string;page:number;cfi:string};
-export type ReadingRecord = {page:number;total:number;percent:number;cfi:string;started:boolean;completed:boolean;favorite:boolean;notes:string;bookmarks:Bookmark[];version:number;updatedAt?:string;lastReadAt?:string|null;lastMutationId?:string;readRanges?:[number,number][];furthestPage?:number;furthestPercent?:number};
+export type ReadingRecord = {page:number;total:number;percent:number;cfi:string;started:boolean;completed:boolean;favorite:boolean;notes:string;bookmarks:Bookmark[];version:number;updatedAt?:string;lastReadAt?:string|null;lastMutationId?:string;readRanges?:[number,number][];furthestPage?:number;furthestPercent?:number;readLater?:boolean;goalDate?:string};
 export type PendingSave = {record:ReadingRecord;expectedVersion:number;mutationId:string};
 export type ProfileStore = {records:Record<string,ReadingRecord>;pending:Record<string,PendingSave>;books?:BookEntry[]};
-export const emptyRecord = ():ReadingRecord => ({page:1,total:0,percent:0,cfi:"",started:false,completed:false,favorite:false,notes:"",bookmarks:[],version:0});
+export const emptyRecord = ():ReadingRecord => ({page:1,total:0,percent:0,cfi:"",started:false,completed:false,favorite:false,readLater:false,goalDate:"",notes:"",bookmarks:[],version:0});
 export class ApiError extends Error { constructor(public status:number,message:string,public data:unknown){super(message);} }
 let requestEmployee:string|null=null;
 export function bindEmployee(id:string|null){requestEmployee=id;}
@@ -25,6 +26,8 @@ export function readProfile(id:string):ProfileStore {
  if(!parsed.records||!parsed.pending||typeof parsed.records!=="object"||typeof parsed.pending!=="object")throw new Error("Your local reading cache is unreadable. Server progress is still available.");
  for(const record of [...Object.values(parsed.records),...Object.values(parsed.pending).map(save=>save.record)]){
   if(!record||typeof record!=="object")throw new Error("Your local reading cache is unreadable. Server progress is still available.");
+  if(record.readLater!==undefined&&typeof record.readLater!=="boolean")delete record.readLater;
+  if(record.goalDate!==undefined&&!isGoalDate(record.goalDate))delete record.goalDate;
   if(record.readRanges!==undefined){try{record.readRanges=normalizeReadRanges(record.readRanges,record.total);}catch{delete record.readRanges;}}
   if(record.furthestPercent!==undefined&&(!Number.isFinite(record.furthestPercent)||record.furthestPercent<0||record.furthestPercent>100))delete record.furthestPercent;
   if(record.furthestPage!==undefined&&(!Number.isInteger(record.furthestPage)||record.furthestPage<0))delete record.furthestPage;

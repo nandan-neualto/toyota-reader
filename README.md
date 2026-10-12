@@ -1,6 +1,6 @@
 # Toyota Employee Library
 
-A touchscreen PDF/EPUB library with employee ID + PIN sign-in, account progress, private notes, bookmarks, favorites and a shared catalog. Administrators can upload books in batches, organize the catalog and manage employee access. See [EMPLOYEE_LIBRARY.md](EMPLOYEE_LIBRARY.md) for setup, account management, offline behavior and production storage.
+A touchscreen PDF/EPUB library with employee ID + PIN sign-in, account progress, private notes, bookmarks, favorites, a read-later list, personal reading targets and a shared catalog. Administrators can upload books in batches, organize the catalog and manage employee access. See [EMPLOYEE_LIBRARY.md](EMPLOYEE_LIBRARY.md) for setup, account management, offline behavior and production storage.
 
 Built with React and TypeScript for reading and listening on museum kiosks, desktop browsers and mobile screens.
 
@@ -33,11 +33,17 @@ Use `npm run dev` for development (frontend 5180, API 5181). The first local sta
 
 ## Account reading progress
 
-Sign in and open **My reading progress** from the library, reader or account panel. The dashboard shows started and employee-marked completed books, favorites, last-read dates, saved positions and resume actions, with filtering and sorting.
+Sign in and open **My reading progress** from the library, reader or account panel. The dashboard shows started and employee-marked completed books, favorites, books saved for later, last-read dates, saved positions and resume actions, with filtering and sorting.
 
 PDF progress counts unique pages successfully opened since page tracking began. Revisiting a page or changing zoom does not increase the count; jumping ahead does not count skipped pages. EPUB progress shows the furthest reading position while preserving the last position for resume. These indicators describe pages opened or locations reached, not comprehension. **Mark completed** is a separate employee choice and does not set coverage to 100%.
 
 Existing records retain their saved PDF page or EPUB location. Older PDF records display saved position until coverage tracking begins; historical pages are not invented. Archived books keep their account history and remain visible as unavailable. Device saves and server confirmation are shown separately, and confirmed progress returns on the next sign-in.
+
+## Personal reading plans and notes
+
+Use **Read later** on a book card or in **My reading progress** to build a private account list separate from favorites. Adding an unopened book does not mark it started, and opening it does not automatically remove it from the list. In the dashboard, set a personal finish-by date, change it, or remove it. Upcoming and past-target counts cover unfinished books, with filters for all personal targets or only past targets. Marking a book completed retains its target date and removes it from those counts. Targets use the employee device's local calendar date and never complete books automatically. Read-later choices and targets use the same offline queue and server-confirmation status as progress.
+
+Open **My notes** while reading to search bookmarks, filter to the current location, sort them, rename a saved location, or undo the most recent removal while the panel remains open. **Download notes & bookmarks** saves this book's current notes and saved locations as a Unicode text file. Notes continue to save automatically, with a character counter and a visible device/server save status.
 
 ## Narration
 
@@ -45,9 +51,9 @@ Uses the operating system/browser Speech Synthesis API. Install the required voi
 
 ## Shared catalog administration
 
-Sign in as an administrator and choose **Manage library**. Upload up to 100 PDF/EPUB files per batch, with individual results and safe retries of remaining files. Search and filter by availability, collection, format and language; sort by title, date, reader count or collection. Select up to 100 books for bulk collection, author/publisher, language, archive or restore changes. Selections are preserved across filters, and failed updates stay selected for retry.
+Sign in as an administrator and choose **Manage library**. Upload up to 100 PDF/EPUB files per batch, with individual results and safe retries of remaining files. Search and filter by availability, collection, format, language and metadata quality; sort by title, date, reader count or collection. Review books missing a description or using an unclassified collection. Browse catalog and employee tables in pages of 25, 50 or 100; the employee directory supports name/ID search and role/access filters. Select up to 100 books for bulk collection, author/publisher, language, archive or restore changes. Selections are preserved across pages and filters, and failed updates stay selected for retry. The table checkbox selects the current page; bulk changes apply to the whole selection.
 
-The administration panel shows the configured book-file storage budget and exports the current filtered catalog to Unicode CSV, including Japanese and Kannada. Archived files still use storage. Uploaded files persist in the database. Use the institution's approved book copies.
+The administration panel shows the configured book-file storage budget and exports every matching catalog result across all pages to Unicode CSV, including Japanese and Kannada. Archived files still use storage. Uploaded files persist in the database. Use the institution's approved book copies.
 
 ## Open source
 

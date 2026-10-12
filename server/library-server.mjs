@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { openDatabase } from './database.mjs';
 import { clientAddress } from './client-address.mjs';
 import {normalizeReadRanges,mergeReadingHistory} from '../lib/reading-progress.mjs';
+import {cleanReadingPlan} from '../lib/reading-plans.mjs';
 
 const derive = promisify(scrypt), now = () => new Date().toISOString();
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -61,11 +62,12 @@ function cleanRecord(input) {
   if (cfi && !/^epubcfi\([\s\S]+\)$/.test(cfi)) fail(400, 'Invalid EPUB position.');
   const bookmarks = input.bookmarks ?? [];
   if (!Array.isArray(bookmarks) || bookmarks.length > 100) fail(400, 'Use at most 100 bookmarks per book.');
+  let plan;try{plan=cleanReadingPlan(input);}catch(error){fail(400,error.message);}
   const tracking={};
   if(input.readRanges!==undefined){try{tracking.readRanges=normalizeReadRanges(input.readRanges,total);}catch{fail(400,'Invalid page coverage.');}}
   if(input.furthestPage!==undefined){if(!Number.isInteger(input.furthestPage)||input.furthestPage<0||input.furthestPage>1000000)fail(400,'Invalid furthest page.');tracking.furthestPage=input.furthestPage;}
   if(input.furthestPercent!==undefined){if(!Number.isFinite(input.furthestPercent)||input.furthestPercent<0||input.furthestPercent>100)fail(400,'Invalid furthest progress.');tracking.furthestPercent=input.furthestPercent;}
-  return { ...tracking, page, total, percent, cfi, started: !!input.started, completed: !!input.completed, favorite: !!input.favorite,
+  return { ...tracking, ...plan, page, total, percent, cfi, started: !!input.started, completed: !!input.completed, favorite: !!input.favorite,
     notes: string(input.notes ?? '', 'notes', 20000, false), bookmarks: bookmarks.map(b => {if(!b||typeof b!=='object')fail(400,'Invalid bookmark.');const cfi=string(b.cfi??'', 'bookmark location',2048,false);if(cfi&&!/^epubcfi\([\s\S]+\)$/.test(cfi))fail(400,'Invalid bookmark location.');return { id: string(b.id, 'bookmark ID', 80), label: string(b.label, 'bookmark label', 160), page: Math.max(1, Math.min(1000000, Math.trunc(Number(b.page) || 1))), cfi };}),
     lastReadAt: typeof input.lastReadAt === 'string' && Number.isFinite(Date.parse(input.lastReadAt)) ? input.lastReadAt : null };
 }

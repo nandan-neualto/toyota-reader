@@ -15,7 +15,7 @@
     "db:generate": "drizzle-kit generate",
     "prepare:reader": "node scripts/prepare-reader.mjs",
     "start:cloudflare": "node scripts/start-cloudflare-library.mjs",
-    "test:library": "node --test scripts/test-library-server.mjs scripts/test-employee-csv.mjs scripts/test-visit-clock.mjs scripts/test-reading-progress.mjs scripts/test-catalog-controls.mjs scripts/test-reading-progress-server.mjs",
+    "test:library": "node --test scripts/test-library-server.mjs scripts/test-employee-csv.mjs scripts/test-visit-clock.mjs scripts/test-reading-progress.mjs scripts/test-catalog-controls.mjs scripts/test-reading-progress-server.mjs scripts/test-reading-plans.mjs scripts/test-personal-notes.mjs",
     "test:browser": "node --test scripts/test-library-browser.mjs"
   },
   "dependencies": {
