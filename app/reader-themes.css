@@ -1,0 +1,48 @@
+/* Reader page colours. Themes apply only while a book is open; the library keeps its light design. */
+
+/* Theme picker in Settings */
+.theme-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.theme-choice { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; border: 1px solid #dfe3e9; border-radius: 10px; background: #fff; font-size: 13px; font-weight: 550; color: #3e4856; cursor: pointer; }
+.theme-choice input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.theme-choice:has(input:checked) { border-color: var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-primary); }
+.theme-choice:has(input:focus-visible) { outline: 3px solid var(--brand-primary); outline-offset: 3px; }
+.theme-swatch { display: grid; place-items: center; width: 100%; height: 46px; border-radius: 7px; border: 1px solid #0000001a; font: 600 18px Georgia, serif; }
+.theme-choice-light .theme-swatch { background: #fff; color: #283341; }
+.theme-choice-sepia .theme-swatch { background: #f6eedc; color: #4a3b28; }
+.theme-choice-night .theme-swatch { background: #1c2027; color: #d8dde5; }
+
+/* Sepia: a warm reading surface */
+.theme-sepia .document-stage { background: #e9e0cc; }
+.theme-sepia .document-stage canvas { filter: sepia(.32) brightness(.98); }
+.theme-sepia .reading-text { background: #f6eedc; color: #4a3b28; }
+.theme-sepia .epub-stage { background: #f6eedc; }
+
+/* Night: dark pages and controls for low light */
+.reading-room.theme-night { background: #111418; color-scheme: dark; }
+.theme-night :focus-visible { outline-color: #a99bff !important; }
+.theme-night .room-header, .theme-night .reader-toolbar, .theme-night .narration-bar, .theme-night .reader-bottom, .theme-night .page-scrubber { background: #181c22; border-color: #2b313a; }
+.theme-night .reader-account-progress { background: #1c1a26; border-color: #2e2a3d; }
+.theme-night .reader-account-progress>span:first-child { color: #cdbdf0; }
+.theme-night .reader-account-progress>span[role=status] { color: #a59cb5; }
+.theme-night .reader-toolbar h1, .theme-night .brand>div, .theme-night .narration-caption strong { color: #e8ebf0; }
+.theme-night .brand small, .theme-night .narration-caption, .theme-night .narration-caption span, .theme-night .page-jump, .theme-night .epub-location, .theme-night .account-button small, .theme-night .reader-bottom>span { color: #9ea8b5; }
+.theme-night .brand>span { background: #2b313a; }
+.theme-night .brand img { filter: brightness(0) invert(1); opacity: .9; }
+.theme-night .reader-toolbar button, .theme-night .reader-bottom button, .theme-night .toolbar-button, .theme-night .icon-button, .theme-night .rate-button, .theme-night .zoom-tools, .theme-night .page-jump input, .theme-night .reader-account-progress>.toolbar-button { background: #222832; border-color: #363d48; color: #dde1e7; }
+.theme-night .zoom-tools button { background: transparent; }
+.theme-night .zoom-tools span { color: #c4cad3; }
+.theme-night .reader-toolbar button:hover:not(:disabled), .theme-night .reader-bottom button:hover:not(:disabled), .theme-night .toolbar-button:hover:not(:disabled), .theme-night .icon-button:hover:not(:disabled), .theme-night .rate-button:hover:not(:disabled) { background: #2e3542; color: #fff; }
+.theme-night .zoom-tools .fit-toggle[aria-pressed=true] { background: #393260; color: #e5ddff; }
+.theme-night .account-sync { color: #8fc5ac; }
+.theme-night .document-stage { background: #0f1216; }
+.theme-night .document-stage canvas { filter: invert(.9) hue-rotate(180deg); box-shadow: 0 3px 20px #0009; }
+.theme-night .reading-text { background: #1c2027; color: #d8dde5; }
+.theme-night .reading-text mark { background: #73601c; color: #fff; }
+.theme-night .reading-text mark.spoken-mark { background: #29426e; box-shadow: 0 0 0 3px #29426e; }
+.theme-night .epub-stage { background: #1c2027; }
+.theme-night .speech-notice, .theme-night .reader-recovery-notice { background: #29241a; border-color: #3b3324; color: #ead8a6; }
+.theme-night .reader-loading { background: #222832; border-color: #363d48; color: #dde1e7; }
+.theme-night .page-scrubber input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(to right, #9a8fff var(--scrub-percent), #343b46 var(--scrub-percent)); }
+.theme-night .page-scrubber input[type=range]::-webkit-slider-thumb { background: #9a8fff; border-color: #181c22; }
+.theme-night .page-scrubber input[type=range]::-moz-range-track { background: #343b46; }
+.theme-night .page-scrubber input[type=range]::-moz-range-progress, .theme-night .page-scrubber input[type=range]::-moz-range-thumb { background: #9a8fff; }

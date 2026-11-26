@@ -1,11 +1,12 @@
 "use client";
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
-import {Upload,Users,BookOpen,Check,LoaderCircle,FileText,Plus,RefreshCw,Download,X,SlidersHorizontal} from "lucide-react";
+import {Upload,Users,BookOpen,Check,LoaderCircle,FileText,Plus,RefreshCw,Download,X,SlidersHorizontal,ImagePlus} from "lucide-react";
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from "@/components/ui/dialog";
 import {api,ApiError,type Employee} from "@/lib/employee-library";
 import {parseEmployeeCsv} from "@/lib/employee-csv.mjs";
 import {catalogCsv,filterCatalog,filterEmployees,paginateRecords,selectVisibleBooks} from "@/lib/catalog-controls.mjs";
 import type {BookEntry} from "@/lib/catalog";
+import {createCover} from "@/lib/book-covers";
 import type {EmployeeLibrary} from "@/hooks/use-employee-library";
 
 type AccountInput={employeeId:string;name:string;pin:string;role:string};
@@ -36,6 +37,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
  const [edit,setEdit]=useState<BookEntry|null>(null),[account,setAccount]=useState<Employee|null>(null),[replacement,setReplacement]=useState(""),[saving,setSaving]=useState(false),[bulkProgress,setBulkProgress]=useState<{completed:number;total:number}|null>(null);
  const [employeeId,setEmployeeId]=useState(""),[name,setName]=useState(""),[pin,setPin]=useState(""),[role,setRole]=useState("employee"),[batch,setBatch]=useState<AccountInput[]>([]),[results,setResults]=useState<Array<{employeeId:string;ok?:boolean;error?:string}>>([]);
  const uploadController=useRef<AbortController|null>(null),refreshController=useRef<AbortController|null>(null),refreshSequence=useRef(0),importSequence=useRef(0),closed=useRef(false),operation=useRef(false),importInput=useRef<HTMLInputElement>(null),bookInput=useRef<HTMLInputElement>(null),selectAllInput=useRef<HTMLInputElement>(null);
+ const [coverProgress,setCoverProgress]=useState<{completed:number;total:number}|null>(null);
  const busy=uploading||saving;
  const refreshLibrary=library.refresh;
  const filteredBooks=useMemo(()=>filterCatalog(books,{query:bookQuery,status:bookStatus,collection:bookCollection,format:bookFormat,language:bookLanguage,sort:bookSort,quality:bookQuality},usage),[books,bookQuery,bookStatus,bookCollection,bookFormat,bookLanguage,bookSort,bookQuality,usage]);
@@ -45,6 +47,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
  const employeePageKey=JSON.stringify([employeeQuery,employeeRole,employeeStatus,employeePageSize,filteredEmployees.map(employee=>employee.id)]);
  const bookPage=paginateRecords(filteredBooks,bookPagination.key===bookPageKey?bookPagination.page:1,bookPageSize);
  const employeePage=paginateRecords(filteredEmployees,employeePagination.key===employeePageKey?employeePagination.page:1,employeePageSize);
+ const missingCovers=useMemo(()=>books.filter(book=>!book.cover&&book.active!==false),[books]);
  const collections=useMemo(()=>[...new Set(books.map(book=>book.category||""))].filter(Boolean).sort((a,b)=>a.localeCompare(b)),[books]);
  const languages=useMemo(()=>[...new Set([...Object.keys(languageNames),...books.map(book=>book.language)])].filter(Boolean).sort(),[books]);
  const visibleIds=bookPage.items.map(book=>book.id);
@@ -101,6 +104,13 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
     try{
      const result=await api<{duplicate:boolean;book:BookEntry}>("/api/admin/books?"+params,{method:"POST",body:item.file,signal:controller.signal,headers:{"Content-Type":"application/octet-stream"}});
      if(closed.current)break;succeeded++;
+     // New books get a cover from their first page (PDF) or their own cover image (EPUB).
+     if(!result.duplicate){
+      setItems(list=>list.map((entry,i)=>i===index?{...entry,status:"Creating cover…"}:entry));
+      const image=await createCover(item.file,result.book.format);
+      if(image&&!closed.current){try{await api("/api/admin/books/"+result.book.id+"/cover",{method:"PUT",body:image,signal:controller.signal,headers:{"Content-Type":image.type}});}catch{}}
+      if(closed.current)break;
+     }
      setItems(list=>list.map((entry,i)=>i===index?{...entry,state:"done",status:result.duplicate?result.book.active!==false?"Already in library — skipped":"Already archived — restore it in catalog":"Added to library"}:entry));
     }catch(error){
      if(closed.current)break;failed++;
@@ -141,6 +151,26 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
   }catch(error){if(!closed.current)setError(message(error,"Could not update the selection. All books remain selected for retry."));}
   finally{finishOperation();}
  }
+ async function createMissingCovers(){
+  if(!missingCovers.length||!beginOperation())return;
+  setSaving(true);const list=[...missingCovers];let created=0,without=0,failed=0;setCoverProgress({completed:0,total:list.length});
+  try{
+   for(const [index,book] of list.entries()){
+    if(closed.current)return;
+    try{
+     const response=await fetch(book.url!,{credentials:"same-origin",cache:"no-store",headers:library.user?{"X-Library-User":library.user.id}:{}});
+     if(!response.ok)throw new ApiError(response.status,"Book unavailable.",null);
+     const image=await createCover(await response.blob(),book.format);
+     if(!image)without++;
+     else{await api("/api/admin/books/"+book.id+"/cover",{method:"PUT",body:image,headers:{"Content-Type":image.type}});created++;}
+    }catch(error){failed++;if(error instanceof ApiError&&(error.status===401||error.status===403))break;}
+    if(!closed.current)setCoverProgress({completed:index+1,total:list.length});
+   }
+   if(closed.current)return;
+   await syncViews();
+   setNotice(`${created} ${created===1?"cover":"covers"} created.${without?` ${without} ${without===1?"book has":"books have"} no cover image and keep the designed placeholder.`:""}${failed?` ${failed} could not be processed. Try again later.`:""}`);
+  }finally{if(!closed.current)setCoverProgress(null);finishOperation();}
+ }
  function exportCatalog(){
   if(busy||loading||!catalogReady||!filteredBooks.length)return;
   const url=URL.createObjectURL(new Blob([catalogCsv(filteredBooks,usage)],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");
@@ -172,6 +202,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
     <button className="toolbar-button" disabled={loading||busy} onClick={()=>void refresh()}><RefreshCw size={16}/> Refresh</button>
    </div>
    {error&&<p className="library-alert" role="alert">{error}</p>}{notice&&<p className="shelf-notice" role="status">{notice}</p>}
+   {coverProgress&&<div className="catalog-operation" role="status"><LoaderCircle size={18} className="reader-spinner"/> Creating covers · {coverProgress.completed} of {coverProgress.total}<progress value={coverProgress.completed} max={coverProgress.total} aria-label="Covers created"/></div>}
    {bulkProgress&&<div className="catalog-operation" role="status"><LoaderCircle size={18} className="reader-spinner"/> Updating books · {bulkProgress.completed} of {bulkProgress.total}<progress value={bulkProgress.completed} max={bulkProgress.total} aria-label="Selected books updated"/></div>}
    {loading?<div className="manager-loading" role="status"><LoaderCircle className="reader-spinner"/> Loading library records…</div>:tab==="books"?<>
     <div className="catalog-overview" aria-label="Catalog overview"><div><strong>{books.length}</strong><span>Total books</span></div><div><strong>{books.filter(book=>book.active!==false).length}</strong><span>Available</span></div><div><strong>{books.filter(book=>book.active===false).length}</strong><span>Archived</span></div><div><strong>{collections.length}</strong><span>Collections</span></div></div>
@@ -187,7 +218,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
       <div className="bulk-actions"><span>Completed files are skipped when you retry.</span>{uploading?<button className="toolbar-button" onClick={()=>uploadController.current?.abort()}>Cancel remaining uploads</button>:<div className="upload-batch-actions"><button className="toolbar-button" disabled={busy} onClick={clearUploads}>Clear batch</button><button className="primary-button" disabled={busy||!retryableUploads||!category.trim()||!author.trim()} onClick={()=>void upload()}><Upload size={17}/> {items.some(item=>item.state==="error")?"Upload / retry":"Upload"} {retryableUploads} books</button></div>}</div>
      </>}
     </section>
-    <div className="manager-section-title catalog-section-heading"><div><h3>Manage the catalog</h3><p>{filteredBooks.length} of {books.length} books match. Edit metadata, organize collections, or archive books.</p></div><button className="toolbar-button" disabled={busy||loading||!catalogReady||!filteredBooks.length} onClick={exportCatalog}><Download size={17}/> Export all {filteredBooks.length} results CSV</button></div>
+    <div className="manager-section-title catalog-section-heading"><div><h3>Manage the catalog</h3><p>{filteredBooks.length} of {books.length} books match. Edit metadata, organize collections, or archive books.</p></div><div className="catalog-heading-buttons">{missingCovers.length>0&&<button className="toolbar-button" disabled={busy||loading||!catalogReady} onClick={()=>void createMissingCovers()}><ImagePlus size={17}/> Create {missingCovers.length} missing {missingCovers.length===1?"cover":"covers"}</button>}<button className="toolbar-button" disabled={busy||loading||!catalogReady||!filteredBooks.length} onClick={exportCatalog}><Download size={17}/> Export all {filteredBooks.length} results CSV</button></div></div>
     {!catalogReady&&<p className="catalog-stale">These are the last loaded records. Refresh successfully before exporting the catalog.</p>}
     <fieldset disabled={busy} className="catalog-fieldset"><div className="manager-catalog-tools catalog-control-grid">
      <label className="catalog-admin-search">Search catalog<input aria-label="Search administration catalog" placeholder="Title, author or description…" value={bookQuery} onChange={event=>changeBookFilter(setBookQuery,event.target.value)}/></label>
@@ -206,7 +237,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
      <div className="catalog-bulk-actions"><button className="toolbar-button" disabled={busy||!Object.keys(metadataChange).length} onClick={()=>void bulkChange(metadataChange)}><SlidersHorizontal size={16}/> Apply metadata</button><button className="toolbar-button" disabled={busy} onClick={()=>void bulkChange({active:false})}>Archive selected</button><button className="toolbar-button" disabled={busy} onClick={()=>void bulkChange({active:true})}>Restore selected</button></div>
     </div>}
     <RecordPagination label="Books" {...bookPage} onPage={page=>setBookPagination({key:bookPageKey,page})} onSize={size=>{setBookPageSize(size);setBookPagination({key:"",page:1});}} disabled={busy}/>
-    <div className="manager-table-wrap"><table><thead><tr><th><label className="table-selection catalog-page-selection"><input ref={selectAllInput} type="checkbox" aria-label="Select books on this page only, keeping other selections, up to 100 total" checked={allVisibleSelected} disabled={busy||!visibleIds.length||selected.length>=100&&!allVisibleSelected} onChange={event=>{const checked=event.target.checked;setSelected(ids=>selectVisibleBooks(ids,visibleIds,checked));}}/><span>This page</span></label></th><th>Book</th><th>Collection</th><th>Readers</th><th>Status</th><th>Action</th></tr></thead><tbody>{bookPage.items.map(book=><tr key={book.id}><td><label className="table-selection"><input type="checkbox" aria-label={"Select "+book.title} checked={selected.includes(book.id)} disabled={busy||selected.length>=100&&!selected.includes(book.id)} onChange={event=>{const checked=event.target.checked;setSelected(ids=>selectVisibleBooks(ids,[book.id],checked));}}/></label></td><td><strong>{book.title}</strong><small>{book.author} · {book.format.toUpperCase()} · {languageNames[book.language]||book.language}</small></td><td>{book.category}</td><td>{usage[book.id]||0}</td><td><span className={book.active!==false?"status-active":"status-archived"}>{book.active!==false?"Available":"Archived"}</span></td><td><button className="toolbar-button" disabled={busy} onClick={()=>{setError("");setEdit({...book});}}>Edit details</button></td></tr>)}</tbody></table>
+    <div className="manager-table-wrap"><table><thead><tr><th><label className="table-selection catalog-page-selection"><input ref={selectAllInput} type="checkbox" aria-label="Select books on this page only, keeping other selections, up to 100 total" checked={allVisibleSelected} disabled={busy||!visibleIds.length||selected.length>=100&&!allVisibleSelected} onChange={event=>{const checked=event.target.checked;setSelected(ids=>selectVisibleBooks(ids,visibleIds,checked));}}/><span>This page</span></label></th><th>Book</th><th>Collection</th><th>Readers</th><th>Status</th><th>Action</th></tr></thead><tbody>{bookPage.items.map(book=><tr key={book.id}><td><label className="table-selection"><input type="checkbox" aria-label={"Select "+book.title} checked={selected.includes(book.id)} disabled={busy||selected.length>=100&&!selected.includes(book.id)} onChange={event=>{const checked=event.target.checked;setSelected(ids=>selectVisibleBooks(ids,[book.id],checked));}}/></label></td><td><div className="manager-book-cell">{book.cover?<img src={book.cover} alt="" loading="lazy"/>:<span className="manager-cover-placeholder" aria-hidden="true"><BookOpen size={15}/></span>}<div><strong>{book.title}</strong><small>{book.author} · {book.format.toUpperCase()} · {languageNames[book.language]||book.language}</small></div></div></td><td>{book.category}</td><td>{usage[book.id]||0}</td><td><span className={book.active!==false?"status-active":"status-archived"}>{book.active!==false?"Available":"Archived"}</span></td><td><button className="toolbar-button" disabled={busy} onClick={()=>{setError("");setEdit({...book});}}>Edit details</button></td></tr>)}</tbody></table>
      {!filteredBooks.length&&<div className="catalog-filter-empty"><BookOpen size={26}/><h4>{!catalogReady?"Catalog unavailable":books.length?"No books match these filters":"Your collection is ready to grow"}</h4><p>{!catalogReady?"Refresh to load the latest catalog.":books.length?"Try another title, collection, format, language or metadata filter. Your selected books are kept.":"Add PDF and EPUB books using the batch uploader above."}</p>{hasFilters&&<button className="toolbar-button" disabled={busy} onClick={clearFilters}>Clear filters</button>}</div>}
     </div>
    </>:<>

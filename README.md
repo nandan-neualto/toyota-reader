@@ -21,11 +21,14 @@ Use `npm run dev` for development (frontend 5180, API 5181). The first local sta
 
 ## Reader features
 
-- Original PDF rendering, zoom, selectable text view, embedded contents and direct page jumps.
-- EPUB pagination and contents through EPUB.js. Scripts are disabled and active/remote section content is removed.
-- Read aloud, pause, resume, stop, voice choice and speed. Optional continuous narration advances across pages.
+- Original PDF rendering, zoom, selectable text view, embedded contents and direct page jumps. **Whole page** (toolbar or Settings → Page size) fits a full page on screen without scrolling; **Page width** (the default) gives larger text.
+- **Find in book** (toolbar, or Ctrl+F while reading) searches every page of a PDF or every section of an EPUB, ignoring case and line breaks. Results stream in with a short excerpt; selecting one opens that page or location. PDF text view highlights the matches. Scanned PDF pages without a text layer cannot be searched.
+- EPUB pagination and contents through EPUB.js. Scripts are disabled and active/remote section content is removed. EPUB pages re-flow when the reading area changes size, not only when the window does.
+- Read aloud, pause, resume, stop, voice choice and speed. Optional continuous narration advances across pages. In PDF text view the sentence being read is highlighted and scrolled into view.
+- **Page colour**: Light, Sepia or Night (Settings). Night darkens the page and all reader controls for low light.
+- A page scrubber jumps to any PDF page or EPUB position, with a preview bubble while dragging.
 - Additional PDF/EPUB files can be opened for the current visit. Those files are not uploaded or saved to a shared library.
-- Keyboard left/right page navigation and touch-sized controls.
+- Swipe left or right across the page to turn it on touch screens (a zoomed page scrolls sideways first), keyboard left/right page navigation and touch-sized controls. On phones, every reader control fits on one toolbar row.
 - Four minutes of inactivity produces a 30-second warning, then ends the visit and signs out an active employee account. Active narration prevents reset.
 - Library navigation stays within the current visit. **Finish visit** clears imported books, stops narration, closes dialogs, and restores default reading preferences. The idle timer also covers the library and dialogs.
 - Landscape layouts keep reading controls visible at 1920×1080, 1366×768, and 1280×720, with 48-pixel touch targets, keyboard focus, and reduced-motion support.
@@ -39,6 +42,10 @@ PDF progress counts unique pages successfully opened since page tracking began. 
 
 Existing records retain their saved PDF page or EPUB location. Older PDF records display saved position until coverage tracking begins; historical pages are not invented. Archived books keep their account history and remain visible as unavailable. Device saves and server confirmation are shown separately, and confirmed progress returns on the next sign-in.
 
+## Reading rhythm
+
+Time spent actively reading a shared book while signed in is counted per day. **My reading progress** shows the current and longest streak, this week against last week, reading days over 12 weeks and a calendar heatmap with exact daily times (hover, arrow keys or a table view). The library heading shows an active streak. Reading time is private to each employee.
+
 ## Personal reading plans and notes
 
 Use **Read later** on a book card or in **My reading progress** to build a private account list separate from favorites. Adding an unopened book does not mark it started, and opening it does not automatically remove it from the list. In the dashboard, set a personal finish-by date, change it, or remove it. Upcoming and past-target counts cover unfinished books, with filters for all personal targets or only past targets. Marking a book completed retains its target date and removes it from those counts. Targets use the employee device's local calendar date and never complete books automatically. Read-later choices and targets use the same offline queue and server-confirmation status as progress.
@@ -51,7 +58,7 @@ Uses the operating system/browser Speech Synthesis API. Install the required voi
 
 ## Shared catalog administration
 
-Sign in as an administrator and choose **Manage library**. Upload up to 100 PDF/EPUB files per batch, with individual results and safe retries of remaining files. Search and filter by availability, collection, format, language and metadata quality; sort by title, date, reader count or collection. Review books missing a description or using an unclassified collection. Browse catalog and employee tables in pages of 25, 50 or 100; the employee directory supports name/ID search and role/access filters. Select up to 100 books for bulk collection, author/publisher, language, archive or restore changes. Selections are preserved across pages and filters, and failed updates stay selected for retry. The table checkbox selects the current page; bulk changes apply to the whole selection.
+Sign in as an administrator and choose **Manage library**. Upload up to 100 PDF/EPUB files per batch, with individual results and safe retries of remaining files. Each new book gets a cover automatically (a PDF's first page or an EPUB's own cover image); **Create missing covers** fills in older books. Search and filter by availability, collection, format, language and metadata quality; sort by title, date, reader count or collection. Review books missing a description or using an unclassified collection. Browse catalog and employee tables in pages of 25, 50 or 100; the employee directory supports name/ID search and role/access filters. Select up to 100 books for bulk collection, author/publisher, language, archive or restore changes. Selections are preserved across pages and filters, and failed updates stay selected for retry. The table checkbox selects the current page; bulk changes apply to the whole selection.
 
 The administration panel shows the configured book-file storage budget and exports every matching catalog result across all pages to Unicode CSV, including Japanese and Kannada. Archived files still use storage. Uploaded files persist in the database. Use the institution's approved book copies.
 

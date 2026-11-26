@@ -13,3 +13,7 @@ export const featuredBook: BookEntry = {
   category: "Continuous improvement", description: "Linking Strategy and Operational Excellence to Achieve Superior Performance",
 };
 export type TocEntry = { title: string; target: string | number; depth: number };
+/** One search result: a PDF page (with its match count) or an EPUB location. */
+export type SearchHit = { key: string; target: string | number; label: string; count: number; before: string; match: string; after: string };
+/** Streams results as the book is searched; resolves when finished or aborted. */
+export type SearchRunner = (query: string, signal: AbortSignal, onProgress: (hits: SearchHit[], searched: number, total: number, matches: number) => void) => Promise<void>;

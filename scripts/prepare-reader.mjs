@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, existsSync } from "node:fs";
 mkdirSync("public/vendor", { recursive: true });
 for (const name of ["pdf.worker.mjs"]) cpSync("node_modules/pdfjs-dist/build/"+name,"public/vendor/"+name);
 for (const name of ["cmaps", "standard_fonts", "wasm"]) {

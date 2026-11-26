@@ -1,14 +1,17 @@
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, createHash, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import { existsSync, statSync, createReadStream, writeFileSync } from 'node:fs';
+import { createReadStream, writeFileSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Readable } from 'node:stream';
+import { brotliCompress, gzip, constants as zlibConstants } from 'node:zlib';
 import { openDatabase } from './database.mjs';
 import { clientAddress } from './client-address.mjs';
 import {normalizeReadRanges,mergeReadingHistory} from '../lib/reading-progress.mjs';
 import {cleanReadingPlan} from '../lib/reading-plans.mjs';
+import {cleanActivity} from '../lib/reading-activity.mjs';
 
 const derive = promisify(scrypt), now = () => new Date().toISOString();
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -26,7 +29,7 @@ async function pinHash(value) { const salt = randomBytes(16).toString('hex'); re
 async function verifyPin(value, stored) { const [salt, expected] = stored.split(':'); const candidate = await derive(value, salt, 64); return timingSafeEqual(Buffer.from(expected, 'hex'), candidate); }
 function send(res, status, data, headers = {}) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(data)); }
 async function body(req, limit = 256 * 1024, raw = false) {
-  if (Number(req.headers['content-length']) > limit) { req.resume(); fail(413, `File exceeds the ${Math.round(limit / 1024 / 1024)} MB limit.`); }
+  if (Number(req.headers['content-length']) > limit) { req.resume(); fail(413, raw ? `File exceeds the ${Math.round(limit / 1024 / 1024)} MB limit.` : 'Request is too large.'); }
   const chunks = []; let size = 0;
   for await (const chunk of req) { size += chunk.length; if (size > limit) fail(413, 'Request is too large.'); chunks.push(chunk); }
   const bytes = Buffer.concat(chunks);
@@ -54,6 +57,12 @@ function validateBook(bytes, format) {
     if (!names.includes('mimetype') || !names.includes('META-INF/container.xml')) fail(400, 'This file is not a valid EPUB.');
   } else fail(400, 'Choose PDF or EPUB files.');
 }
+function imageType(bytes) {
+  if (bytes.length > 8 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (bytes.length > 12 && bytes.toString('latin1', 0, 4) === 'RIFF' && bytes.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
 function cleanRecord(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail(400, 'Invalid reading record.');
   const page = Number(input.page ?? 1), total = Number(input.total ?? 0), percent = Number(input.percent ?? 0);
@@ -66,6 +75,7 @@ function cleanRecord(input) {
   const tracking={};
   if(input.readRanges!==undefined){try{tracking.readRanges=normalizeReadRanges(input.readRanges,total);}catch{fail(400,'Invalid page coverage.');}}
   if(input.furthestPage!==undefined){if(!Number.isInteger(input.furthestPage)||input.furthestPage<0||input.furthestPage>1000000)fail(400,'Invalid furthest page.');tracking.furthestPage=input.furthestPage;}
+  if(input.activity!==undefined){try{tracking.activity=cleanActivity(input.activity);}catch{fail(400,'Invalid reading activity.');}}
   if(input.furthestPercent!==undefined){if(!Number.isFinite(input.furthestPercent)||input.furthestPercent<0||input.furthestPercent>100)fail(400,'Invalid furthest progress.');tracking.furthestPercent=input.furthestPercent;}
   return { ...tracking, ...plan, page, total, percent, cfi, started: !!input.started, completed: !!input.completed, favorite: !!input.favorite,
     notes: string(input.notes ?? '', 'notes', 20000, false), bookmarks: bookmarks.map(b => {if(!b||typeof b!=='object')fail(400,'Invalid bookmark.');const cfi=string(b.cfi??'', 'bookmark location',2048,false);if(cfi&&!/^epubcfi\([\s\S]+\)$/.test(cfi))fail(400,'Invalid bookmark location.');return { id: string(b.id, 'bookmark ID', 80), label: string(b.label, 'bookmark label', 160), page: Math.max(1, Math.min(1000000, Math.trunc(Number(b.page) || 1))), cfi };}),
@@ -108,6 +118,8 @@ export async function createLibraryServer(options = {}) {
   const cookie = (token, age) => `toyota_library=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${production ? '; Secure' : ''}`;
   const server = createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'same-origin'); res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()'); res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    if (production) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
     try {
       const url = new URL(req.url, 'http://localhost'), path = url.pathname, method = req.method;
       if (path === '/api/health' && method === 'GET') { await db.query('SELECT 1'); return send(res, 200, { ok: true, storage: db.kind }); }
@@ -118,7 +130,7 @@ export async function createLibraryServer(options = {}) {
           res.statusCode=upstream.status;for(const [key,value] of upstream.headers)if(!['transfer-encoding','content-encoding','content-length','set-cookie'].includes(key))res.setHeader(key,value);
           if(upstream.body)Readable.fromWeb(upstream.body).pipe(res);else res.end();return;
         }
-        return serveStatic(req, res, path, staticRoot);
+        return await serveStatic(req, res, path, staticRoot);
       }
       if (!['GET','HEAD'].includes(method)) {
         const origin = req.headers.origin;
@@ -183,8 +195,16 @@ export async function createLibraryServer(options = {}) {
       const file = /^\/api\/books\/([\w-]+)\/file$/.exec(path);
       if (file && (method === 'GET' || method === 'HEAD')) {
         const [book] = await db.query('SELECT data,source_url,format FROM library_books WHERE id=$1 AND active=1',[file[1]]); if (!book) fail(404,'Book unavailable.');
-        if (book.source_url) return serveFile(req,res,resolve(booksRoot,'.'+book.source_url),book.format==='pdf'?'application/pdf':'application/epub+zip',true);
+        if (book.source_url) return await serveFile(req,res,resolve(booksRoot,'.'+book.source_url),{type:book.format==='pdf'?'application/pdf':'application/epub+zip',privateFile:true});
         return sendBytes(req,res,Buffer.from(book.data),book.format==='pdf'?'application/pdf':'application/epub+zip');
+      }
+      const coverFile = /^\/api\/books\/([\w-]+)\/cover$/.exec(path);
+      if (coverFile && (method === 'GET' || method === 'HEAD')) {
+        const [book]=await db.query('SELECT cover_data,cover_type FROM library_books WHERE id=$1 AND (active=1 OR $2=1)',[coverFile[1],user.role==='admin'?1:0]);
+        if (!book?.cover_data) fail(404,'Cover unavailable.');
+        // Cover URLs carry a content hash, so a cached copy never goes stale.
+        res.writeHead(200,{'Content-Type':book.cover_type,'Cache-Control':'private, max-age=2592000, immutable','Content-Length':Buffer.from(book.cover_data).length});
+        return res.end(method==='HEAD'?undefined:Buffer.from(book.cover_data));
       }
       if (!path.startsWith('/api/admin/')) fail(404,'Page unavailable.');
       if (user.role !== 'admin') fail(403,'Library administrator access is required.');
@@ -214,6 +234,16 @@ export async function createLibraryServer(options = {}) {
         await db.query('UPDATE library_books SET title=$1,author=$2,category=$3,description=$4,language=$5,active=$6 WHERE id=$7',[string(input.title,'title'),string(input.author,'author'),string(input.category,'category',80),string(input.description??'','description',3000,false),string(input.language,'language',30),input.active===false?0:1,edit[1]]);
         return send(res,200,{ok:true});
       }
+      const cover=/^\/api\/admin\/books\/([\w-]+)\/cover$/.exec(path);
+      if(cover&&method==='PUT') {
+        const bytes=await body(req,2*1024*1024,true),type=imageType(bytes);
+        if(!type)fail(400,'Choose a JPEG, PNG or WebP cover image.');
+        const [old]=await db.query('SELECT id FROM library_books WHERE id=$1',[cover[1]]);if(!old)fail(404,'Book unavailable.');
+        const url=`/api/books/${cover[1]}/cover?v=${hash(bytes).slice(0,12)}`;
+        await db.query('UPDATE library_books SET cover_data=$1,cover_type=$2,cover=$3 WHERE id=$4',[bytes,type,url,cover[1]]);
+        const [row]=await db.query(`SELECT ${bookColumns} FROM library_books WHERE id=$1`,[cover[1]]);
+        return send(res,200,{book:publicBook(row)});
+      }
       if(path==='/api/admin/employees'&&method==='GET') return send(res,200,{employees:(await db.query('SELECT id,employee_id,name,role,active,created_at FROM library_users ORDER BY name')).map(publicUser)});
       if(path==='/api/admin/employees'&&method==='POST') {
         const input=await body(req), entries=input.employees;
@@ -242,7 +272,7 @@ export async function createLibraryServer(options = {}) {
   });
   return { server, db, setup, close: async()=>{clearInterval(cleanup);await new Promise(resolve=>server.close(resolve));await db.close();} };
 }
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.jpg':'image/jpeg','.png':'image/png','.woff2':'font/woff2','.wasm':'application/wasm','.pdf':'application/pdf','.txt':'text/plain'};
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.jpg':'image/jpeg','.png':'image/png','.woff2':'font/woff2','.wasm':'application/wasm','.pdf':'application/pdf','.txt':'text/plain; charset=utf-8','.webmanifest':'application/manifest+json','.ico':'image/x-icon','.webp':'image/webp','.gif':'image/gif','.jpeg':'image/jpeg'};
 function sendBytes(req,res,bytes,type) {
   res.setHeader('Content-Type',type);res.setHeader('Cache-Control','private, no-store');res.setHeader('Accept-Ranges','bytes');
   const range=/^bytes=(\d+)-(\d*)$/.exec(req.headers.range||'');
@@ -250,17 +280,74 @@ function sendBytes(req,res,bytes,type) {
   if(range){start=Number(range[1]);end=range[2]?Math.min(end,Number(range[2])):end;if(start>end){res.writeHead(416,{'Content-Range':`bytes */${bytes.length}`});return res.end();}res.statusCode=206;res.setHeader('Content-Range',`bytes ${start}-${end}/${bytes.length}`);}
   res.setHeader('Content-Length',end-start+1);res.end(req.method==='HEAD'?undefined:bytes.subarray(start,end+1));
 }
-function serveFile(req,res,path,type,privateFile=false){
-  if(!existsSync(path)||!statSync(path).isFile())return send(res,404,{error:'File unavailable.'});
-  res.setHeader('Content-Type',type||types[extname(path)]||'application/octet-stream');res.setHeader('Cache-Control',privateFile?'private, no-store':/sw\.js|offline-assets\.json|\.html$/.test(path)?'no-cache':'public, max-age=3600');
-  res.setHeader('Content-Length',statSync(path).size);if(req.method==='HEAD')return res.end();createReadStream(path).pipe(res);
+// The app shell may use inline Next.js bootstrap scripts; everything else must come from this origin.
+// EPUB sections render in srcdoc frames that inherit this policy, so blob: images, styles and fonts stay allowed.
+const contentSecurityPolicy=["default-src 'self'","script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'","style-src 'self' 'unsafe-inline' blob:","img-src 'self' data: blob:","font-src 'self' data: blob:","connect-src 'self'","worker-src 'self' blob:","frame-src 'self' blob:","media-src 'self' blob:","manifest-src 'self'","object-src 'none'","base-uri 'self'","form-action 'self'","frame-ancestors 'self'"].join('; ');
+const compressible=/^(text\/|application\/(json|manifest\+json|xml)|image\/svg\+xml)/;
+const compressedFiles=new Map();
+const compressors={br:(bytes,done)=>brotliCompress(bytes,{params:{[zlibConstants.BROTLI_PARAM_QUALITY]:5}},done),gzip:(bytes,done)=>gzip(bytes,{level:6},done)};
+function acceptedEncoding(header=''){
+  const accepted=new Map(String(header).split(',').map(part=>{const [name,...params]=part.trim().toLowerCase().split(';');const q=params.map(p=>/^\s*q=([\d.]+)/.exec(p)?.[1]).find(Boolean);return [name,q===undefined?1:Number(q)];}));
+  return ['br','gzip'].find(name=>(accepted.get(name)??accepted.get('*')??0)>0)||null;
 }
-function serveStatic(req,res,path,root){
+// Each static file is compressed once per version and kept in memory; the bundle is a few megabytes.
+function compressedFile(path,info,encoding){
+  const key=encoding+':'+path+':'+info.size+':'+info.mtimeMs;
+  let entry=compressedFiles.get(key);
+  if(!entry){
+    if(compressedFiles.size>=600)compressedFiles.clear();
+    entry=readFile(path).then(bytes=>new Promise((done,reject)=>compressors[encoding](bytes,(error,result)=>error?reject(error):done(result))));
+    compressedFiles.set(key,entry);entry.catch(()=>compressedFiles.delete(key));
+  }
+  return entry;
+}
+function cachePolicy(path){
+  const url=path.split(sep).join('/');
+  if(url.includes('/_next/static/'))return 'public, max-age=31536000, immutable';
+  if(/\/sw\.js$|\/offline-assets\.json$|\.html$|\/__next\.[^/]*\.txt$|\/index\.txt$/.test(url))return 'no-cache';
+  return 'public, max-age=3600';
+}
+function byteRange(header,size){
+  const range=/^bytes=(\d+)-(\d*)$/.exec(header||'');if(!range)return null;
+  const start=Number(range[1]),end=range[2]?Math.min(size-1,Number(range[2])):size-1;
+  return start>end||start>=size?false:{start,end};
+}
+async function serveFile(req,res,path,{type,privateFile=false,status=200}={}){
+  let info;try{info=await stat(path);}catch{info=null;}
+  if(!info?.isFile())return send(res,404,{error:'File unavailable.'});
+  const contentType=type||types[extname(path)]||'application/octet-stream';
+  res.statusCode=status;res.setHeader('Content-Type',contentType);res.setHeader('Cache-Control',privateFile?'private, no-store':cachePolicy(path));
+  if(contentType.startsWith('text/html'))res.setHeader('Content-Security-Policy',contentSecurityPolicy);
+  const canCompress=!privateFile&&compressible.test(contentType);
+  if(canCompress)res.setHeader('Vary','Accept-Encoding');
+  if(!privateFile&&status===200){
+    const etag='W/"'+info.size.toString(16)+'-'+Math.trunc(info.mtimeMs).toString(16)+'"';
+    res.setHeader('ETag',etag);res.setHeader('Last-Modified',info.mtime.toUTCString());
+    if(String(req.headers['if-none-match']||'').split(',').map(value=>value.trim()).includes(etag)){res.statusCode=304;return res.end();}
+  }
+  const encoding=canCompress&&info.size>1024?acceptedEncoding(req.headers['accept-encoding']):null;
+  if(encoding){
+    const bytes=await compressedFile(path,info,encoding);
+    res.setHeader('Content-Encoding',encoding);res.setHeader('Content-Length',bytes.length);
+    return res.end(req.method==='HEAD'?undefined:bytes);
+  }
+  res.setHeader('Accept-Ranges','bytes');
+  const range=status===200?byteRange(req.headers.range,info.size):null;
+  if(range===false){res.statusCode=416;res.setHeader('Content-Range','bytes */'+info.size);return res.end();}
+  if(range){res.statusCode=206;res.setHeader('Content-Range','bytes '+range.start+'-'+range.end+'/'+info.size);}
+  res.setHeader('Content-Length',range?range.end-range.start+1:info.size);
+  if(req.method==='HEAD')return res.end();
+  createReadStream(path,range||undefined).on('error',()=>res.destroy()).pipe(res);
+}
+async function serveStatic(req,res,path,root){
   if(!['GET','HEAD'].includes(req.method))return send(res,405,{error:'Method unavailable.'});
   let decoded;try{decoded=decodeURIComponent(path);}catch{return send(res,400,{error:'Invalid path.'});}
   const target=resolve(root,'.'+decoded);
   if(target!==root&&!target.startsWith(root+sep))return send(res,403,{error:'Invalid path.'});
   const file=path==='/'?resolve(root,'index.html'):target;
+  // Unknown pages get the app's own not-found page rather than a JSON error.
+  const exists=await stat(file).then(info=>info.isFile(),()=>false);
+  if(!exists&&String(req.headers.accept||'').includes('text/html'))return serveFile(req,res,resolve(root,'404.html'),{status:404});
   return serveFile(req,res,file);
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){

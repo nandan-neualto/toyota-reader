@@ -1,10 +1,11 @@
 import type {BookEntry} from "./catalog";
 import {normalizeReadRanges} from "./reading-progress.mjs";
 import {isGoalDate} from "./reading-plans.mjs";
+import {cleanActivity} from "./reading-activity.mjs";
 
 export type Employee = {id:string; employeeId:string; name:string; role:"admin"|"employee"; active:boolean};
 export type Bookmark = {id:string;label:string;page:number;cfi:string};
-export type ReadingRecord = {page:number;total:number;percent:number;cfi:string;started:boolean;completed:boolean;favorite:boolean;notes:string;bookmarks:Bookmark[];version:number;updatedAt?:string;lastReadAt?:string|null;lastMutationId?:string;readRanges?:[number,number][];furthestPage?:number;furthestPercent?:number;readLater?:boolean;goalDate?:string};
+export type ReadingRecord = {page:number;total:number;percent:number;cfi:string;started:boolean;completed:boolean;favorite:boolean;notes:string;bookmarks:Bookmark[];version:number;updatedAt?:string;lastReadAt?:string|null;lastMutationId?:string;readRanges?:[number,number][];furthestPage?:number;furthestPercent?:number;readLater?:boolean;goalDate?:string;activity?:Record<string,number>};
 export type PendingSave = {record:ReadingRecord;expectedVersion:number;mutationId:string};
 export type ProfileStore = {records:Record<string,ReadingRecord>;pending:Record<string,PendingSave>;books?:BookEntry[]};
 export const emptyRecord = ():ReadingRecord => ({page:1,total:0,percent:0,cfi:"",started:false,completed:false,favorite:false,readLater:false,goalDate:"",notes:"",bookmarks:[],version:0});
@@ -30,6 +31,7 @@ export function readProfile(id:string):ProfileStore {
   if(record.goalDate!==undefined&&!isGoalDate(record.goalDate))delete record.goalDate;
   if(record.readRanges!==undefined){try{record.readRanges=normalizeReadRanges(record.readRanges,record.total);}catch{delete record.readRanges;}}
   if(record.furthestPercent!==undefined&&(!Number.isFinite(record.furthestPercent)||record.furthestPercent<0||record.furthestPercent>100))delete record.furthestPercent;
+  if(record.activity!==undefined){try{record.activity=cleanActivity(record.activity);}catch{delete record.activity;}}
   if(record.furthestPage!==undefined&&(!Number.isInteger(record.furthestPage)||record.furthestPage<0))delete record.furthestPage;
  }
  if(parsed.books!==undefined&&!Array.isArray(parsed.books))delete parsed.books;

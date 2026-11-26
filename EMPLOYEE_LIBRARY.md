@@ -20,8 +20,10 @@ For development, `npm run dev` starts the frontend on 5180 and the API on 5181. 
 - Resume at the last PDF page or EPUB CFI position, including on another device using the same server. Open **My reading progress** from the library, reader or account panel for account totals, per-book progress, last-read dates and resume actions.
 - Favorites, a separate private read-later list, personal finish-by targets, completed books, up to 100 bookmarks per book, and private notes. Download notes and bookmarks as a Unicode text file.
 - Search titles, authors, descriptions and topics; filter by collection or personal shelf; sort by title, recently added, last read or reading progress; grid/list views. The progress dashboard also filters all account books, in-progress or completed books, read-later books, unfinished personal targets and past targets. Sort by last read, progress, title or target date.
-- Original PDF rendering, zoom, text view, contents, direct page jumps and EPUB pagination.
-- Read aloud, pause/resume/stop, installed voices, speed and continuous narration.
+- Original PDF rendering, zoom, text view, contents, direct page jumps and EPUB pagination. A page scrubber above the page buttons jumps to any PDF page or EPUB position; its bubble previews the destination before you let go.
+- **Find in book** (Ctrl+F) searches the whole PDF or EPUB; **Whole page** fits a full PDF page on screen; swipe left or right to turn pages.
+- **Page colour** in Settings: Light, Sepia or Night. Night darkens pages and every reader control for low light (PDF pages are shown with inverted colours); the choice lasts for the visit.
+- Read aloud, pause/resume/stop, installed voices, speed and continuous narration. In PDF text view the sentence being read is highlighted and kept in view.
 - Device-local saves queue while offline and sync automatically on reconnection. Status distinguishes device saves from confirmed server receipt. Conflicting changes from another device require choosing which copy to keep.
 - Save shared books on a device for offline reading while signed in. Sign-in needs a connection. The bundled book supports guest offline reading after the app has been cached.
 - Personal files stay in memory for the current visit. They are cleared on sign-out, and do not enter the shared catalog or the employee's saved record.
@@ -38,6 +40,12 @@ For development, `npm run dev` starts the frontend on 5180 and the API on 5181. 
 - **Archived books:** each account keeps its reading record and book details in the progress dashboard. Archived or missing books appear unavailable for resume, while their saved history remains. Restoring an archived book makes it available again without resetting progress.
 
 The reader and dashboard distinguish **Saved on this device** from **Saved to your account**. Pending changes sync to the server when the connection returns. Server-confirmed records are loaded on the next sign-in with that employee ID; keep the tab open if device storage is unavailable and a save is still pending. Conflicting changes retain separate copies until the employee chooses one.
+
+## Reading rhythm
+
+While a shared book is open and in use, the reader counts reading time for the signed-in employee: the screen must be visible and touched, scrolled or typed on within the last two and a half minutes, or narration must be playing. Time is saved per book and per local calendar day, at least once a minute and whenever the book closes, the tab is hidden or the employee signs out. It follows the same offline queue and server confirmation as other progress; when two devices report the same day, the larger total is kept, so retried saves never double-count.
+
+**My reading progress** shows the current streak (consecutive days with at least a minute of reading; it stays alive until the end of today), the longest streak, this week's reading time against last week, and reading days over the last 12 weeks. A calendar heatmap shades each day from light to dark blue by minutes read; hover or use the arrow keys for a day's exact time, or open **Show daily reading time** for a table. The library heading shows the streak once it starts. Reading time is private to the employee: administrators see no per-employee times. Guest visits and personal files are not counted.
 
 ## Personal reading plans
 
@@ -66,6 +74,7 @@ Sign in as an administrator and choose **Manage library**.
 
 - Select/drop up to 100 PDFs/EPUBs per batch, at most 50 MB each. A progress meter and individual results show processed, successful, waiting and failed files. A failed file does not discard successful uploads. Cancel remaining uploads, remove unsuccessful files or retry the batch; completed files are skipped and identical contents are deduplicated.
 - Assign collection, author and language defaults to each batch. Edit title, author, collection, description, language and availability afterward.
+- Covers are created automatically for new uploads: the first page of a PDF, or the cover image inside an EPUB. They are made in the administrator's browser with the reader's own PDF/EPUB engines and stored as small JPEGs; an EPUB without a cover image keeps the designed placeholder. **Create missing covers** does the same for books already in the catalog. Covers are served only to signed-in employees, with long-lived cache headers; a cover that cannot load (for example offline) falls back to the placeholder.
 - Archive and restore books. Archiving hides a book and its download endpoint without deleting its file or employee reading records.
 - Search the catalog and combine availability, collection, format, language and metadata-quality filters. **Needs review** finds books missing a description or using an empty/General collection; the individual metadata filters isolate either case. Sort by title, recently added, reader count or collection. The overview shows total, available and archived books and the number of collections. Browse 25, 50 or 100 books per page; changing filters or page size returns to the first result page.
 - Select up to 100 books across pages and filters to change collection, author/publisher or language, or archive/restore them together. Blank metadata fields preserve existing values. The table checkbox selects or deselects only the current page. Other page and filter selections are preserved; the panel reports counts for this page, other matching pages and outside the current filters. Bulk changes apply to the entire selection. Successful updates are deselected and failed books remain selected for retry.
@@ -92,6 +101,8 @@ Production requires `DATABASE_URL`; first startup also requires `LIBRARY_ADMIN_I
 
 Use `render-library.yaml` for the employee backend. The original `render.yaml` retains the legacy static service and sets `LIBRARY_REDIRECT_URL` to forward visitors to the employee library. See `RENDER.md` for the transition. Local commands do not provision cloud resources.
 
+The server sends the app shell with a Content Security Policy (no plug-ins, no framing by other sites, same-origin connections only), plus `Permissions-Policy`, `Cross-Origin-Opener-Policy` and, in production, HSTS. Hashed `/_next/static` bundles are cached for a year as immutable; the app shell, service worker and offline manifest revalidate on every load using ETags. Text assets are compressed with Brotli or gzip once per file version and kept in memory, and book files support byte ranges so PDFs can start rendering before the whole file arrives.
+
 Sessions use hashed random tokens, HttpOnly/SameSite cookies, server-side role checks and PINs hashed with scrypt. Incorrect sign-ins are rate-limited. This is an administrator-managed directory; it does not verify identity against Toyota HR or corporate SSO. Administrators must provision authorized IDs and distribute initial PINs privately. Corporate SSO can be connected when its provider is known.
 
 Signing into a different account in another browser tab clears the previous account from its tab. Saves are bound to that tab's account ID so stale tabs cannot overwrite another employee's progress.
@@ -101,12 +112,15 @@ Back up the database regularly. To back up local SQLite, stop the preview and co
 ## Verification
 
 ```powershell
-npm run test:library
+npm test
 node node_modules/typescript/bin/tsc --noEmit
+npm run lint
 npm run build:render
 npm run build
 npx playwright install chromium --only-shell
 npm run test:browser
 ```
 
-Server checks use isolated temporary data. Progress and catalog checks cover unique-page accounting, retained account records, personal target validation and backward compatibility, filtering, pagination, selection limits, and Unicode CSV/text output. Browser checks use an in-memory database and synthetic PDF/EPUB books; they verify upload/login/progress/offline workflows and save screenshots in the ignored `outputs/employee-library` folder. Layout checks cover 1920×1080, 1366×768, 1280×720, portrait and mobile. Build the Render frontend before browser checks.
+To run the browser checks with an installed Edge or Chrome instead of downloading Chromium, set `PLAYWRIGHT_CHANNEL` first, for example `$env:PLAYWRIGHT_CHANNEL="msedge"; npm run test:browser`. GitHub Actions runs the server tests, type check and lint on every push and pull request.
+
+Server checks use isolated temporary data. Static-file checks cover cache headers, ETag revalidation, Brotli/gzip compression, byte ranges, the not-found page and path traversal. Reader checks cover whole-page scaling, swipe detection and case/whitespace-insensitive search in English, Japanese and Kannada. Progress and catalog checks cover unique-page accounting, retained account records, personal target validation and backward compatibility, filtering, pagination, selection limits, and Unicode CSV/text output. Browser checks use an in-memory database and synthetic PDF/EPUB books; they verify upload/login/progress/offline workflows, whole-page fitting, swipe page turns, PDF and EPUB search, and the one-row phone toolbar, and save screenshots in the ignored `outputs/employee-library` folder. Layout checks cover 1920×1080, 1366×768, 1280×720, portrait and mobile. Build the Render frontend before browser checks.

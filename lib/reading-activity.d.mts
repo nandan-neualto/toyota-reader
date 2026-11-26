@@ -1,0 +1,14 @@
+export type ReadingActivity = Record<string, number>;
+export type ActivityCell = {day: string; seconds: number; future: boolean};
+export type ActivitySummary = {streak: number; longest: number; thisWeek: number; lastWeek: number; calendar: ActivityCell[][]; activeDays: number; windowSeconds: number; days: Array<{day: string; seconds: number}>};
+export const ACTIVITY_DAYS: number;
+export const STREAK_SECONDS: number;
+export const ACTIVITY_LEVELS: Array<{min: number; label: string}>;
+export function localDate(date?: Date): string;
+export function addDays(day: string, count: number): string;
+export function cleanActivity(value: unknown): ReadingActivity;
+export function addReadingTime(activity: ReadingActivity | undefined, seconds: number, day?: string): ReadingActivity;
+export function mergeActivity(previous?: ReadingActivity, incoming?: ReadingActivity): ReadingActivity;
+export function summarizeActivity(records: Array<{activity?: ReadingActivity} | undefined>, today?: string, weeks?: number): ActivitySummary;
+export function activityLevel(seconds: number): number;
+export function formatDuration(seconds: number): string;

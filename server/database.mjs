@@ -50,5 +50,11 @@ export async function openDatabase({ databaseUrl, sqlitePath = '.library-data/li
     `CREATE TABLE IF NOT EXISTS library_reading (user_id TEXT NOT NULL REFERENCES library_users(id), book_id TEXT NOT NULL REFERENCES library_books(id), record TEXT NOT NULL, version INTEGER NOT NULL, mutation_id TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(user_id, book_id))`,
     `CREATE INDEX IF NOT EXISTS library_sessions_expiry ON library_sessions(expires_at)`,
   ]) await query(sql);
+  // Columns added after the first release; existing libraries gain them on startup.
+  const bookColumns = databaseUrl ? null : new Set((await query("SELECT name FROM pragma_table_info('library_books')")).map(row => row.name));
+  for (const [name, type] of [['cover_data', binary], ['cover_type', 'TEXT']]) {
+    if (databaseUrl) await query(`ALTER TABLE library_books ADD COLUMN IF NOT EXISTS ${name} ${type}`);
+    else if (!bookColumns.has(name)) await query(`ALTER TABLE library_books ADD COLUMN ${name} ${type}`);
+  }
   return { query, transaction, close, kind: databaseUrl ? 'postgres' : 'sqlite' };
 }

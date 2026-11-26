@@ -12,7 +12,23 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build output, copied third-party reader assets and local tool state.
+    ".next-render/**",
+    "dist/**",
+    "public/vendor/**",
+    ".wrangler/**",
+    ".sites-runtime/**",
+    "outputs/**",
+    "work/**",
+    "coverage/**",
   ]),
+  {
+    rules: {
+      // The Render build is a static export with unoptimized images, so
+      // next/image adds no optimization over a plain <img>.
+      "@next/next/no-img-element": "off",
+    },
+  },
   {
     files: ["components/ui/**/*.{ts,tsx}", "hooks/use-mobile.ts"],
     rules: {

@@ -4,6 +4,7 @@ import {featuredBook,type BookEntry} from "@/lib/catalog";
 import {api,ApiError,bindEmployee,emptyRecord,readProfile,writeProfile,catalogCache,cachedFile,storeFile,type Employee,type ProfileStore,type ReadingRecord} from "@/lib/employee-library";
 
 import {trackReadingLocation,type ReadingLocation} from "@/lib/reading-progress.mjs";
+import {addReadingTime} from "@/lib/reading-activity.mjs";
 
 export function useEmployeeLibrary(){
  const [user,setUser]=useState<Employee|null>(null),[checking,setChecking]=useState(true),[guest,setGuest]=useState(false);
@@ -98,6 +99,10 @@ export function useEmployeeLibrary(){
   if(!person.current)return;update(bookId,trackReadingLocation(store.current.records[bookId]||emptyRecord(),location));
  },[update]);
  useEffect(()=>{const saveWhenHidden=()=>{if(document.visibilityState==="hidden")void flush();};document.addEventListener("visibilitychange",saveWhenHidden);window.addEventListener("pagehide",flush);return()=>{document.removeEventListener("visibilitychange",saveWhenHidden);window.removeEventListener("pagehide",flush);if(saveTimer.current)clearTimeout(saveTimer.current);};},[flush]);
+ // Reading time is added to the freshest stored record so back-to-back saves never overwrite each other.
+ const recordReadingTime=useCallback((bookId:string,seconds:number)=>{
+  if(!person.current||seconds<1)return;update(bookId,{activity:addReadingTime((store.current.records[bookId]||emptyRecord()).activity,seconds)});
+ },[update]);
  const resolveConflict=useCallback((bookId:string,useLocal:boolean)=>{
   const cloud=conflictRef.current[bookId];if(!cloud)return;
   if(useLocal&&store.current.pending[bookId]){store.current.pending[bookId].expectedVersion=cloud.version;store.current.pending[bookId].mutationId=crypto.randomUUID();}
@@ -121,6 +126,6 @@ export function useEmployeeLibrary(){
   return {...book,file};
  },[]);
  const download=useCallback(async(book:BookEntry)=>{if(!person.current)return;const id=person.current.id,entry=await loadBook(book);let file=entry.file;if(!file){const response=await fetch(entry.url!);if(!response.ok)throw new Error("The book could not be downloaded.");file=new File([await response.blob()],book.title+"."+book.format);}if(person.current?.id!==id)throw new Error("Your account changed before the download finished. Try again after signing in.");await storeFile(id,book.id,file);},[loadBook]);
- return {user,checking,closing,guest,setGuest,books,historyBooks,records,pendingCount,syncing,deviceSaved,message,conflicts,login,logout,update,recordLocation,flush,refresh,resolveConflict,loadBook,download};
+ return {user,checking,closing,guest,setGuest,books,historyBooks,records,pendingCount,syncing,deviceSaved,message,conflicts,login,logout,update,recordLocation,recordReadingTime,flush,refresh,resolveConflict,loadBook,download};
 }
 export type EmployeeLibrary=ReturnType<typeof useEmployeeLibrary>;

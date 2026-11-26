@@ -1,0 +1,62 @@
+/* Whole-page fitting, in-book search and compact reader controls. */
+.document-stage.fit-page { display: flex; flex-direction: column; }
+.document-stage.fit-page canvas { margin: auto; }
+.zoom-tools .fit-toggle[aria-pressed=true] { background: var(--brand-soft); color: var(--brand-deep); }
+.reading-text mark, .book-search-excerpt mark { background: #ffe58a; color: inherit; border-radius: 3px; padding: 0 1px; }
+
+.search-sheet { gap: 0 !important; }
+.book-search { display: flex; flex-direction: column; gap: 14px; margin-top: 20px; }
+.book-search-form { display: flex; flex-direction: column; gap: 10px; }
+.book-search-form>label { font-size: 15px; font-weight: 550; }
+.book-search-field { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 6px 0 14px; border: 1px solid #d2d6dd; border-radius: 10px; background: #fff; color: #687485; }
+.book-search-field:focus-within { outline: 3px solid var(--brand-primary); outline-offset: 2px; }
+.book-search-field input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 16px; color: #1c1f24; min-height: 48px; }
+.book-search-field input::-webkit-search-cancel-button { display: none; }
+.book-search-field input:focus-visible { outline: none; }
+.book-search-clear { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 8px; background: transparent; color: #66717e; }
+.book-search-actions { display: flex; justify-content: flex-end; }
+.book-search-actions .primary-button { min-height: 48px; padding: 10px 22px; font-size: 14px; gap: 9px; }
+.book-search-summary { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.6; color: #465362; }
+.book-search-progress { width: 100%; height: 6px; accent-color: var(--brand-primary); }
+.book-search-results { list-style: none; margin: 0 -8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.book-search-results button { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; min-height: 52px; padding: 12px; border: 0; border-radius: 8px; background: #fff; text-align: left; color: #303a47; }
+.book-search-results button:hover:not(:disabled) { background: var(--brand-soft); color: #303a47; }
+.book-search-hit-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; }
+.book-search-hit-label strong { font-weight: 600; color: var(--brand-deep); }
+.book-search-hit-label small { font-size: 12px; color: #6a7582; white-space: nowrap; }
+.book-search-excerpt { font-size: 13px; line-height: 1.6; color: #4b5563; overflow-wrap: anywhere; }
+.book-search-note, .book-search-help { font-size: 12px; line-height: 1.7; color: #596575; }
+.book-search-help { border-top: 1px solid #e5e8ed; padding-top: 12px; }
+
+@media (max-width:600px) {
+  /* Keep every reader control on one row on phones; labels remain available to assistive technology.
+     Whole-page fitting stays in Settings, since a whole page is too small to read on a portrait phone. */
+  .reader-toolbar { gap: 4px; }
+  .reader-toolbar .zoom-tools span, .reader-toolbar .fit-toggle { display: none; }
+  .reader-toolbar .zoom-tools button, .reader-toolbar>button { width: 44px; min-width: 44px; padding-inline: 0; }
+}
+
+/* Page scrubber: drag to any page (PDF) or position (EPUB); the bubble previews the destination. */
+.page-scrubber { position: relative; flex-shrink: 0; display: flex; align-items: center; height: 30px; padding: 0 25px; background: #fff; border-top: 1px solid #edf0f4; }
+.page-scrubber input[type=range] { width: 100%; height: 30px; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; cursor: pointer; touch-action: none; }
+.page-scrubber input[type=range]:disabled { cursor: default; opacity: .55; }
+.page-scrubber input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, var(--brand-primary) var(--scrub-percent), #e3e7ed var(--scrub-percent)); }
+.page-scrubber input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -8px; border-radius: 50%; background: var(--brand-primary); border: 3px solid #fff; box-shadow: 0 1px 5px #0004; }
+.page-scrubber input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: #e3e7ed; }
+.page-scrubber input[type=range]::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--brand-primary); }
+.page-scrubber input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--brand-primary); border: 3px solid #fff; box-shadow: 0 1px 5px #0004; }
+.page-scrubber input[type=range]:focus-visible { outline: 3px solid var(--brand-primary); outline-offset: 2px; border-radius: 6px; }
+.page-scrubber-bubble { position: absolute; bottom: 34px; transform: translateX(-50%); padding: 7px 13px; border-radius: 8px; background: #222936; color: #fff; font-size: 13px; font-weight: 550; white-space: nowrap; pointer-events: none; box-shadow: 0 6px 20px #0003; z-index: 5; }
+.reading-text mark.spoken-mark { background: #dce9ff; box-shadow: 0 0 0 3px #dce9ff; border-radius: 4px; color: inherit; }
+@media (max-width:600px) { .page-scrubber { padding: 0 14px; } }
+
+/* Book covers in the catalogue manager and the continue-reading strip */
+.catalog-heading-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.manager-book-cell { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.manager-book-cell>img, .manager-cover-placeholder { width: 34px; height: 46px; flex-shrink: 0; border-radius: 3px; object-fit: cover; box-shadow: 0 1px 4px #17243126; background: #eef0f3; }
+.manager-cover-placeholder { display: grid; place-items: center; color: #8a94a1; }
+.manager-book-cell>div { min-width: 0; }
+.continue-strip.has-cover { justify-content: flex-start; }
+.continue-strip.has-cover>.primary-button { margin-left: auto; }
+.continue-cover { width: 74px; height: 100px; flex-shrink: 0; object-fit: cover; border-radius: 4px; box-shadow: 0 6px 18px #0006; }
+@media (max-width:600px) { .continue-cover { display: none; } }

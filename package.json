@@ -11,11 +11,12 @@
     "dev": "node scripts/dev-library.mjs",
     "build": "node scripts/prepare-reader.mjs && node scripts/run-framework.mjs build && node scripts/write-cache.mjs",
     "start": "node server/library-server.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "lint": "eslint .",
+    "test": "npm run test:library",
     "db:generate": "drizzle-kit generate",
     "prepare:reader": "node scripts/prepare-reader.mjs",
     "start:cloudflare": "node scripts/start-cloudflare-library.mjs",
-    "test:library": "node --test scripts/test-library-server.mjs scripts/test-employee-csv.mjs scripts/test-visit-clock.mjs scripts/test-reading-progress.mjs scripts/test-catalog-controls.mjs scripts/test-reading-progress-server.mjs scripts/test-reading-plans.mjs scripts/test-personal-notes.mjs",
+    "test:library": "node --test scripts/test-library-server.mjs scripts/test-employee-csv.mjs scripts/test-visit-clock.mjs scripts/test-reading-progress.mjs scripts/test-catalog-controls.mjs scripts/test-reading-progress-server.mjs scripts/test-reading-plans.mjs scripts/test-personal-notes.mjs scripts/test-reader-tools.mjs scripts/test-static-server.mjs scripts/test-reading-activity.mjs scripts/test-covers-activity-server.mjs",
     "test:browser": "node --test scripts/test-library-browser.mjs"
   },
   "dependencies": {

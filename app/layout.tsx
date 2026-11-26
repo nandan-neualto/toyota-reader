@@ -5,6 +5,9 @@ import "./employee-library.css";
 import "./reading-dashboard.css";
 import "./catalog-controls.css";
 import "./personal-notes.css";
+import "./reader-tools.css";
+import "./reader-themes.css";
+import "./reading-activity.css";
 export const metadata: Metadata = {
  title:"Toyota Employee Library", description:"Discover, read and listen. A personal learning library for Toyota employees.",
  manifest:"/manifest.webmanifest", icons:{icon:"/favicon.svg"}

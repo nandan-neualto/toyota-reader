@@ -1,0 +1,10 @@
+export type PageFit = 'width' | 'page';
+export type SwipePoint = {x: number; y: number; time: number};
+export type SearchMatch = {start: number; end: number; before: string; match: string; after: string};
+export function pageScale(input: {pageWidth: number; pageHeight: number; availableWidth: number; availableHeight: number; fit?: PageFit; zoom?: number; maxScale?: number}): number;
+export function swipeDirection(start: SwipePoint | null | undefined, end: SwipePoint | null | undefined, options?: {minDistance?: number; maxDuration?: number; ratio?: number}): -1 | 0 | 1;
+export function normalizeSearchQuery(query: unknown): string;
+export function searchText(text: string, query: string, options?: {limit?: number; context?: number}): {total: number; matches: SearchMatch[]};
+export function highlightParts(text: string, query: string): Array<{text: string; hit: boolean}>;
+export type ReaderTheme = 'light' | 'sepia' | 'night';
+export const readerThemes: Record<ReaderTheme, {label: string; page: string; text: string}>;
