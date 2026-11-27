@@ -32,7 +32,7 @@ function goalDateLabel(value:string){
 function ReadingPlan({entry,today,onChange}:{entry:HistoryEntry;today:string;onChange:(change:Partial<ReadingRecord>)=>void}){
  const inputId=useId(),[editing,setEditing]=useState(false),[draft,setDraft]=useState("");
  const {record,book}=entry,goal=record.goalDate||"",overdue=!!goal&&!record.completed&&goal<today;
- const label=goal?`${record.completed?"Completed · target":overdue?"Target passed":goal===today?"Your target is today":"Finish by"} ${goalDateLabel(goal)}`:"Set your own finish-by date";
+ const label=goal?`${record.completed?"Completed · target":overdue?"Target passed":goal===today?"Your target is today":"Finish by"} ${goalDateLabel(goal)}`:"";
  return <div className="reading-plan">
   <div className="reading-plan-summary"><CalendarDays size={16}/><span className={overdue?"is-overdue":""}>{label}</span>{book&&!editing&&<button type="button" className="reading-plan-edit" aria-label={`${goal?"Change":"Set"} personal target: ${book.title}`} onClick={()=>{setDraft(goal);setEditing(true);}}>{goal?"Change target":"Set target"}</button>}</div>
   {editing&&<form className="reading-plan-form" onSubmit={event=>{event.preventDefault();if(!draft||!isGoalDate(draft))return;onChange({goalDate:draft});setEditing(false);}}>
@@ -51,12 +51,10 @@ function ProgressDetail({entry}:{entry:HistoryEntry}){
  const trackedPages=format==="pdf"&&progress.tracked&&progress.pagesRead!==null;
  const label=trackedPages?"Pages opened":format==="pdf"?"Saved reading position":"Reading position";
  const summary=trackedPages?`${progress.pagesRead} of ${progress.total} pages opened`:`${formatProgress(progress.percent)} ${format==="pdf"||!progress.tracked?"saved position":"furthest position"}`;
- const page=Math.max(1,Math.floor(record.page||1));
  return <div className="reading-history-progress">
   <div className="reading-history-progress-heading"><span>{label}</span><strong>{formatProgress(progress.percent)}</strong></div>
   <div className="reading-history-meter" role="progressbar" aria-label={`${book?.title||"Unavailable book"}: ${label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.percent*10)/10} aria-valuetext={summary}><span style={{width:`${progress.percent}%`}}/></div>
-  <p>{trackedPages?`${progress.pagesRead} of ${progress.total} pages`:format==="pdf"?"Page coverage has not been tracked yet.":progress.tracked?"Based on your furthest EPUB location.":"Your saved EPUB location."}</p>
-  {record.started&&<small>{format==="pdf"?`Resume on page ${page}${progress.total?` of ${progress.total}`:""}`:`Resume at ${formatProgress(progress.positionPercent)} of the book`}</small>}
+  {(trackedPages||format==="pdf")&&<p>{trackedPages?`${progress.pagesRead} of ${progress.total} pages`:"Page coverage has not been tracked yet."}</p>}
  </div>;
 }
 
@@ -132,8 +130,7 @@ export default function ReadingDashboard({library,onOpenBook,onClose}:Props){
    })}</div>
    {!filtered.length&&<div className="reading-history-empty"><BookOpen size={35}/><h3>{emptyTitles[shelf]}</h3><p>{emptyDescriptions[shelf]}</p><button type="button" className="toolbar-button" onClick={onClose}>Back to the library</button></div>}
    {filtered.length>visible&&<div className="reading-history-more"><button type="button" className="toolbar-button" onClick={()=>setVisible(value=>value+24)}>Show more ({filtered.length-visible} remaining)</button></div>}
-   <p className="reading-dashboard-explanation">PDF progress counts unique pages opened since page tracking began. EPUB progress shows the furthest reading position. Finish-by dates are personal goals. You decide when to mark a book completed.</p>
   </div>
-  <footer className="reading-dashboard-footer"><span><ShieldCheck size={16}/> Saved separately for employee ID {library.user.employeeId}</span><button type="button" className="toolbar-button" onClick={onClose}>Back to reading</button></footer>
+  <footer className="reading-dashboard-footer"><span/><button type="button" className="toolbar-button" onClick={onClose}>Back to reading</button></footer>
  </DialogContent></Dialog>;
 }

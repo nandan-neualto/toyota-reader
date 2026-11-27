@@ -9,11 +9,13 @@ import { Readable } from 'node:stream';
 import { brotliCompress, gzip, constants as zlibConstants } from 'node:zlib';
 import { openDatabase } from './database.mjs';
 import { clientAddress } from './client-address.mjs';
+import { BOOK_TYPES, createBookStore } from './book-storage.mjs';
+import { CONVERTIBLE, createConverter, findConverter, isMobi } from './ebook-convert.mjs';
 import {normalizeReadRanges,mergeReadingHistory} from '../lib/reading-progress.mjs';
 import {cleanReadingPlan} from '../lib/reading-plans.mjs';
 import {cleanActivity} from '../lib/reading-activity.mjs';
 
-const derive = promisify(scrypt), now = () => new Date().toISOString();
+const derive = promisify(scrypt), now = () => new Date().toISOString(), gzipAsync = promisify(gzip), brotliAsync = promisify(brotliCompress);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const publicUser = row => ({ id: row.id, employeeId: row.employee_id, name: row.name, role: row.role, active: !!row.active });
 const publicBook = row => ({ id: row.id, title: row.title, author: row.author, category: row.category, description: row.description, language: row.language, format: row.format, active: !!row.active, bytes: row.byte_size, pages: row.pages || undefined, cover: row.cover || undefined, url: `/api/books/${row.id}/file`, addedAt: row.created_at });
@@ -27,7 +29,23 @@ function employeeId(value) { const id = string(value, 'employee ID', 40).toUpper
 function pin(value) { if (typeof value !== 'string' || value.length < 6 || value.length > 128) fail(400, 'Use a PIN or passphrase of at least 6 characters.'); return value; }
 async function pinHash(value) { const salt = randomBytes(16).toString('hex'); return salt + ':' + (await derive(value, salt, 64)).toString('hex'); }
 async function verifyPin(value, stored) { const [salt, expected] = stored.split(':'); const candidate = await derive(value, salt, 64); return timingSafeEqual(Buffer.from(expected, 'hex'), candidate); }
-function send(res, status, data, headers = {}) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(data)); }
+// Large replies (the catalogue of a big library) are compressed; with etag, an unchanged reply costs a 304.
+async function send(res, status, data, headers = {}, { etag = false } = {}) {
+  const text = JSON.stringify(data), req = res.req;
+  const head = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers };
+  if (etag && status === 200) {
+    const tag = 'W/"' + createHash('sha1').update(text).digest('base64url') + '"';
+    head.ETag = tag; head['Cache-Control'] = 'private, no-cache';
+    if (String(req?.headers['if-none-match'] || '').split(',').map(value => value.trim()).includes(tag)) { res.writeHead(304, { ETag: tag, 'Cache-Control': head['Cache-Control'] }); return res.end(); }
+  }
+  const encoding = text.length > 16384 ? acceptedEncoding(req?.headers['accept-encoding']) : null;
+  if (encoding) {
+    const bytes = encoding === 'br' ? await brotliAsync(text, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 } }) : await gzipAsync(text, { level: 6 });
+    res.writeHead(status, { ...head, 'Content-Encoding': encoding, Vary: 'Accept-Encoding', 'Content-Length': bytes.length });
+    return res.end(bytes);
+  }
+  res.writeHead(status, head); res.end(text);
+}
 async function body(req, limit = 256 * 1024, raw = false) {
   if (Number(req.headers['content-length']) > limit) { req.resume(); fail(413, raw ? `File exceeds the ${Math.round(limit / 1024 / 1024)} MB limit.` : 'Request is too large.'); }
   const chunks = []; let size = 0;
@@ -55,7 +73,7 @@ function validateBook(bytes, format) {
       break;
     }
     if (!names.includes('mimetype') || !names.includes('META-INF/container.xml')) fail(400, 'This file is not a valid EPUB.');
-  } else fail(400, 'Choose PDF or EPUB files.');
+  } else fail(400, 'Choose PDF, EPUB or MOBI files.');
 }
 function imageType(bytes) {
   if (bytes.length > 8 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
@@ -91,6 +109,13 @@ export async function createLibraryServer(options = {}) {
   const staticRoot = resolve(options.staticRoot ?? process.env.LIBRARY_STATIC_ROOT ?? '.next-render');
   const frontendUrl = options.frontendUrl ?? process.env.LIBRARY_FRONTEND_URL;
   const booksRoot = resolve('public');
+  const store = createBookStore({ db, directory: options.booksDirectory ?? process.env.LIBRARY_BOOKS_DIR });
+  const maxFileBytes = Math.round(Math.min(512, Math.max(1, Number(options.maxFileMb ?? process.env.LIBRARY_MAX_FILE_MB ?? 50) || 50)) * 1024 * 1024);
+  const storageLimit = () => Number(process.env.LIBRARY_MAX_BYTES || 1024 * 1024 * 1024);
+  // ebookConvert: false turns conversion off; a string names the converter; { command, args } is for tests.
+  let convert = null;
+  if (options.ebookConvert && typeof options.ebookConvert === 'object') convert = createConverter(options.ebookConvert.command, { args: options.ebookConvert.args });
+  else if (options.ebookConvert !== false) { const command = await findConverter(typeof options.ebookConvert === 'string' ? options.ebookConvert : undefined); if (command) convert = createConverter(command); }
   const adminId = options.adminId ?? process.env.LIBRARY_ADMIN_ID;
   const adminPin = options.adminPin ?? process.env.LIBRARY_ADMIN_PIN;
   const [admin] = await db.query("SELECT id FROM library_users WHERE role='admin'");
@@ -122,7 +147,7 @@ export async function createLibraryServer(options = {}) {
     if (production) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
     try {
       const url = new URL(req.url, 'http://localhost'), path = url.pathname, method = req.method;
-      if (path === '/api/health' && method === 'GET') { await db.query('SELECT 1'); return send(res, 200, { ok: true, storage: db.kind }); }
+      if (path === '/api/health' && method === 'GET') { await db.query('SELECT 1'); return send(res, 200, { ok: true, storage: db.kind, files: store.mode, convertsMobi: !!convert }); }
       if (!path.startsWith('/api/')) {
         if(frontendUrl){
           if(!['GET','HEAD'].includes(method))return send(res,405,{error:'Method unavailable.'});
@@ -167,7 +192,7 @@ export async function createLibraryServer(options = {}) {
         await db.transaction(async q => { await q('UPDATE library_users SET pin_hash=$1 WHERE id=$2',[replacement,user.id]); await q('DELETE FROM library_sessions WHERE user_id=$1',[user.id]); });
         return send(res,200,{ok:true},{'Set-Cookie':cookie('',0)});
       }
-      if (path === '/api/catalog' && method === 'GET') return send(res,200,{books:(await db.query(`SELECT ${bookColumns} FROM library_books WHERE active=1 ORDER BY created_at DESC,title`)).map(publicBook)});
+      if (path === '/api/catalog' && method === 'GET') return send(res,200,{books:(await db.query(`SELECT ${bookColumns} FROM library_books WHERE active=1 ORDER BY created_at DESC,title`)).map(publicBook)},{},{etag:true});
       if (path === '/api/profile' && method === 'GET') {
         const rows = await db.query('SELECT book_id,record,version,mutation_id,updated_at FROM library_reading WHERE user_id=$1',[user.id]);
         const columns=bookColumns.split(',').map(column=>'b.'+column).join(',');
@@ -194,9 +219,9 @@ export async function createLibraryServer(options = {}) {
       }
       const file = /^\/api\/books\/([\w-]+)\/file$/.exec(path);
       if (file && (method === 'GET' || method === 'HEAD')) {
-        const [book] = await db.query('SELECT data,source_url,format FROM library_books WHERE id=$1 AND active=1',[file[1]]); if (!book) fail(404,'Book unavailable.');
-        if (book.source_url) return await serveFile(req,res,resolve(booksRoot,'.'+book.source_url),{type:book.format==='pdf'?'application/pdf':'application/epub+zip',privateFile:true});
-        return sendBytes(req,res,Buffer.from(book.data),book.format==='pdf'?'application/pdf':'application/epub+zip');
+        const [book] = await db.query('SELECT id,byte_size,file_key,source_url,format FROM library_books WHERE id=$1 AND active=1',[file[1]]); if (!book) fail(404,'Book unavailable.');
+        if (book.source_url) return await serveFile(req,res,resolve(booksRoot,'.'+book.source_url),{type:BOOK_TYPES[book.format],privateFile:true});
+        return await store.send(req,res,book);
       }
       const coverFile = /^\/api\/books\/([\w-]+)\/cover$/.exec(path);
       if (coverFile && (method === 'GET' || method === 'HEAD')) {
@@ -212,21 +237,36 @@ export async function createLibraryServer(options = {}) {
         const books=(await db.query(`SELECT ${bookColumns} FROM library_books ORDER BY created_at DESC,title`)).map(publicBook);
         const started=db.kind==='postgres'?"(record::jsonb ->> 'started')='true'":"json_extract(record,'$.started')=1";
         const usage=await db.query('SELECT book_id,COUNT(*) AS readers FROM library_reading WHERE '+started+' GROUP BY book_id');
-        return send(res,200,{books,usage:Object.fromEntries(usage.map(row=>[row.book_id,Number(row.readers)])),storage:{usedBytes:books.reduce((sum,book)=>sum+Number(book.bytes||0),0),limitBytes:Number(process.env.LIBRARY_MAX_BYTES||1024*1024*1024)}});
+        return send(res,200,{books,usage:Object.fromEntries(usage.map(row=>[row.book_id,Number(row.readers)])),storage:{usedBytes:books.reduce((sum,book)=>sum+Number(book.bytes||0),0),limitBytes:storageLimit()},limits:{maxFileBytes,convertsMobi:!!convert,files:store.mode}});
       }
       if (path === '/api/admin/books' && method === 'POST') {
-        const filename=string(url.searchParams.get('filename'),'filename',250), format=filename.split('.').pop().toLowerCase();
-        const bytes=await body(req,50*1024*1024,true); validateBook(bytes,format);
-        const digest=hash(bytes), id=randomUUID(), title=filename.replace(/\.(pdf|epub)$/i,'').replaceAll('_',' ').trim();
+        const filename=string(url.searchParams.get('filename'),'filename',250), extension=(filename.split('.').pop()||'').toLowerCase();
+        if(!['pdf','epub',...CONVERTIBLE].includes(extension))fail(400,'Choose PDF, EPUB or MOBI files.');
+        if(CONVERTIBLE.includes(extension)&&!convert)fail(415,'MOBI and Kindle books need converting to EPUB first. Install Calibre on the library server to convert them automatically, or convert the book with Calibre and upload the EPUB.');
+        let bytes=await body(req,maxFileBytes,true);
         const category=string(url.searchParams.get('category')||'General','category',80), author=string(url.searchParams.get('author')||'Toyota library','author',200), language=string(url.searchParams.get('language')||'en','language',30);
-        const result=await db.transaction(async q=>{
-          if(db.kind==='postgres')await q('SELECT pg_advisory_xact_lock(518050)');
-          const [old]=await q('SELECT '+bookColumns+' FROM library_books WHERE digest=$1',[digest]); if(old) return {book:publicBook(old),duplicate:true};
-          const [used]=await q('SELECT COALESCE(SUM(byte_size),0) AS total FROM library_books');
-          if(Number(used.total)+bytes.length>Number(process.env.LIBRARY_MAX_BYTES||1024*1024*1024)) fail(413,'The library storage limit is reached. Increase LIBRARY_MAX_BYTES after checking database capacity.');
-          await q('INSERT INTO library_books(id,title,author,category,description,language,format,active,digest,byte_size,data,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10,$11)',[id,title,author,category,'',language,format,digest,bytes.length,bytes,now()]);
-          const [row]=await q('SELECT '+bookColumns+' FROM library_books WHERE id=$1',[id]); return {book:publicBook(row),duplicate:false};
-        });return send(res,result.duplicate?200:201,result);
+        // The digest of the uploaded file finds repeats before any conversion work.
+        const digest=hash(bytes);
+        const [existing]=await db.query('SELECT '+bookColumns+' FROM library_books WHERE digest=$1',[digest]);
+        if(existing)return send(res,200,{book:publicBook(existing),duplicate:true});
+        let format=extension,converted=false;
+        if(CONVERTIBLE.includes(extension)){if(!isMobi(bytes))fail(400,'This file is not a valid MOBI or Kindle book.');bytes=await convert(bytes,extension);format='epub';converted=true;}
+        validateBook(bytes,format);
+        const id=randomUUID(), title=filename.replace(/\.(pdf|epub|mobi|azw3?)$/i,'').replaceAll('_',' ').trim();
+        const stored=await store.save(bytes,digest,format);
+        let result;
+        try{
+          result=await db.transaction(async q=>{
+            if(db.kind==='postgres')await q('SELECT pg_advisory_xact_lock(518050)');
+            const [old]=await q('SELECT '+bookColumns+' FROM library_books WHERE digest=$1',[digest]); if(old) return {book:publicBook(old),duplicate:true};
+            const [used]=await q('SELECT COALESCE(SUM(byte_size),0) AS total FROM library_books');
+            if(Number(used.total)+bytes.length>storageLimit()) fail(413,'The library storage limit is reached. Increase LIBRARY_MAX_BYTES after checking the free space on the server.');
+            await q('INSERT INTO library_books(id,title,author,category,description,language,format,active,digest,byte_size,data,file_key,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10,$11,$12)',[id,title,author,category,'',language,format,digest,bytes.length,stored.data,stored.fileKey,now()]);
+            const [row]=await q('SELECT '+bookColumns+' FROM library_books WHERE id=$1',[id]); return {book:publicBook(row),duplicate:false,converted};
+          });
+        }catch(error){await store.discard(stored.fileKey);throw error;}
+        if(result.duplicate)await store.discard(stored.fileKey);
+        return send(res,result.duplicate?200:201,result);
       }
       const edit=/^\/api\/admin\/books\/([\w-]+)$/.exec(path);
       if(edit&&method==='PUT') {
@@ -273,13 +313,6 @@ export async function createLibraryServer(options = {}) {
   return { server, db, setup, close: async()=>{clearInterval(cleanup);await new Promise(resolve=>server.close(resolve));await db.close();} };
 }
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.jpg':'image/jpeg','.png':'image/png','.woff2':'font/woff2','.wasm':'application/wasm','.pdf':'application/pdf','.txt':'text/plain; charset=utf-8','.webmanifest':'application/manifest+json','.ico':'image/x-icon','.webp':'image/webp','.gif':'image/gif','.jpeg':'image/jpeg'};
-function sendBytes(req,res,bytes,type) {
-  res.setHeader('Content-Type',type);res.setHeader('Cache-Control','private, no-store');res.setHeader('Accept-Ranges','bytes');
-  const range=/^bytes=(\d+)-(\d*)$/.exec(req.headers.range||'');
-  let start=0,end=bytes.length-1;
-  if(range){start=Number(range[1]);end=range[2]?Math.min(end,Number(range[2])):end;if(start>end){res.writeHead(416,{'Content-Range':`bytes */${bytes.length}`});return res.end();}res.statusCode=206;res.setHeader('Content-Range',`bytes ${start}-${end}/${bytes.length}`);}
-  res.setHeader('Content-Length',end-start+1);res.end(req.method==='HEAD'?undefined:bytes.subarray(start,end+1));
-}
 // The app shell may use inline Next.js bootstrap scripts; everything else must come from this origin.
 // EPUB sections render in srcdoc frames that inherit this policy, so blob: images, styles and fonts stay allowed.
 const contentSecurityPolicy=["default-src 'self'","script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'","style-src 'self' 'unsafe-inline' blob:","img-src 'self' data: blob:","font-src 'self' data: blob:","connect-src 'self'","worker-src 'self' blob:","frame-src 'self' blob:","media-src 'self' blob:","manifest-src 'self'","object-src 'none'","base-uri 'self'","form-action 'self'","frame-ancestors 'self'"].join('; ');

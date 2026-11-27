@@ -16,7 +16,8 @@ export async function api<T>(path:string,init:RequestInit={}):Promise<T>{
  const headers=new Headers(init.headers);
  if(requestEmployee&&!(path==="/api/session"&&init.method==="POST")&&!headers.has("X-Library-User"))headers.set("X-Library-User",requestEmployee);
  if(init.body&&typeof init.body==="string"&&!headers.has("Content-Type"))headers.set("Content-Type","application/json");
- const response=await fetch(path,{...init,credentials:"same-origin",cache:"no-store",headers});
+ // GETs revalidate, so an unchanged catalogue costs a 304; replies the server marks no-store are never kept.
+ const response=await fetch(path,{...init,credentials:"same-origin",cache:(init.method||"GET")==="GET"?"no-cache":"no-store",headers});
  const data=await response.json().catch(()=>({error:"The library returned an unreadable response."})) as {error?:string};
  if(!response.ok)throw new ApiError(response.status,data.error||"The request could not be completed.",data);
  return data as T;
@@ -38,7 +39,16 @@ export function readProfile(id:string):ProfileStore {
  return parsed;
 }
 export function writeProfile(id:string,store:ProfileStore){localStorage.setItem("toyota-library-profile:"+id,JSON.stringify(store));}
-export function catalogCache(id:string,books?:BookEntry[]):BookEntry[]{const key="toyota-library-catalog:"+id;if(books){localStorage.setItem(key,JSON.stringify(books));return books;}const data=JSON.parse(localStorage.getItem(key)||"[]");return Array.isArray(data)?data:[];}
+export function catalogCache(id:string,books?:BookEntry[]):BookEntry[]{
+ const key="toyota-library-catalog:"+id;
+ if(books){
+  // A catalogue of thousands of books may not fit in localStorage; the offline copy then keeps short descriptions.
+  const compact=books.map(book=>book.description&&book.description.length>160?{...book,description:book.description.slice(0,157)+"…"}:book);
+  for(const copy of [books,compact]){try{localStorage.setItem(key,JSON.stringify(copy));return books;}catch{/* Try the smaller copy. */}}
+  localStorage.removeItem(key);return books;
+ }
+ const data=JSON.parse(localStorage.getItem(key)||"[]");return Array.isArray(data)?data:[];
+}
 
 // Files are kept separately from small profile records so large books do not fill localStorage.
 async function filesDb(){return await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open("toyota-library-files",1);request.onupgradeneeded=()=>request.result.createObjectStore("books");request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(new Error("Offline storage is unavailable in this browser."));});}

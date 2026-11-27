@@ -11,10 +11,20 @@ import type {EmployeeLibrary} from "@/hooks/use-employee-library";
 
 type AccountInput={employeeId:string;name:string;pin:string;role:string};
 type UploadItem={file:File;status:string;state:"waiting"|"uploading"|"done"|"error"};
-type CatalogResult={books:BookEntry[];usage:Record<string,number>;storage?:{usedBytes:number;limitBytes:number}};
+type Limits={maxFileBytes:number;convertsMobi:boolean;files?:string};
+type CatalogResult={books:BookEntry[];usage:Record<string,number>;storage?:{usedBytes:number;limitBytes:number};limits?:Limits};
 const languageNames:Record<string,string>={en:"English",ja:"Japanese",kn:"Kannada",hi:"Hindi"};
 const message=(error:unknown,fallback:string)=>error instanceof Error?error.message:fallback;
-const validFile=(file:File)=>/\.(pdf|epub)$/i.test(file.name)&&file.size>0&&file.size<=50*1024*1024;
+const defaultLimits:Limits={maxFileBytes:50*1024*1024,convertsMobi:false};
+const fileSizeLimit=(limits:Limits)=>`${Math.round(limits.maxFileBytes/1024/1024)} MB`;
+// MOBI and Kindle files are offered only when the server can convert them to EPUB.
+const fileProblem=(file:File,limits:Limits)=>{
+ const mobi=/\.(mobi|azw3?)$/i.test(file.name);
+ if(!/\.(pdf|epub)$/i.test(file.name)&&!(mobi&&limits.convertsMobi))return mobi?"MOBI books need converting to EPUB first. Ask IT to install Calibre on the library server.":limits.convertsMobi?"Choose a PDF, EPUB or MOBI file.":"Choose a PDF or EPUB file.";
+ if(file.size===0)return "This file is empty.";
+ if(file.size>limits.maxFileBytes)return `File exceeds ${fileSizeLimit(limits)}.`;
+ return "";
+};
 const storageSize=(bytes:number)=>`${(Math.max(0,bytes)/1024/1024).toLocaleString(undefined,{maximumFractionDigits:1})} MB`;
 
 function RecordPagination({label,page,pages,size,from,to,total,onPage,onSize,disabled}:{label:string;page:number;pages:number;size:number;from:number;to:number;total:number;onPage:(page:number)=>void;onSize:(size:number)=>void;disabled:boolean}){
@@ -28,7 +38,8 @@ function RecordPagination({label,page,pages,size,from,to,total,onPage,onSize,dis
 export default function LibraryManager({library,onClose,onBusyChange}:{library:EmployeeLibrary;onClose:()=>void;onBusyChange:(busy:boolean)=>void}){
  const [tab,setTab]=useState("books"),[books,setBooks]=useState<BookEntry[]>([]),[employees,setEmployees]=useState<Employee[]>([]),[usage,setUsage]=useState<Record<string,number>>({});
  const [loading,setLoading]=useState(true),[catalogReady,setCatalogReady]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
- const [storage,setStorage]=useState<CatalogResult["storage"]>();
+ const [storage,setStorage]=useState<CatalogResult["storage"]>(),[limits,setLimits]=useState<Limits>(defaultLimits);
+ const validFile=(file:File)=>!fileProblem(file,limits);
  const [selected,setSelected]=useState<string[]>([]),[bulkCategory,setBulkCategory]=useState(""),[bulkAuthor,setBulkAuthor]=useState(""),[bulkLanguage,setBulkLanguage]=useState("");
  const [bookQuery,setBookQuery]=useState(""),[bookStatus,setBookStatus]=useState("all"),[bookCollection,setBookCollection]=useState(""),[bookFormat,setBookFormat]=useState("all"),[bookLanguage,setBookLanguage]=useState(""),[bookSort,setBookSort]=useState("title");
  const [bookQuality,setBookQuality]=useState("all"),[bookPageSize,setBookPageSize]=useState(25),[bookPagination,setBookPagination]=useState({key:"",page:1});
@@ -71,7 +82,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
   try{
    const [catalog,directory]=await Promise.all([api<CatalogResult>("/api/admin/books",{signal:controller.signal}),api<{employees:Employee[]}>("/api/admin/employees",{signal:controller.signal})]);
    if(closed.current||controller.signal.aborted||sequence!==refreshSequence.current)return false;
-   setBooks(catalog.books);setUsage(catalog.usage);setStorage(catalog.storage);setEmployees(directory.employees);setBookPagination({key:"",page:1});setEmployeePagination({key:"",page:1});setCatalogReady(true);return true;
+   setBooks(catalog.books);setUsage(catalog.usage);setStorage(catalog.storage);setLimits(catalog.limits??defaultLimits);setEmployees(directory.employees);setBookPagination({key:"",page:1});setEmployeePagination({key:"",page:1});setCatalogReady(true);return true;
   }catch(error){
    if(!controller.signal.aborted&&!closed.current&&sequence===refreshSequence.current)setError(message(error,"Could not load the library. Refresh to try again."));
    return false;
@@ -88,7 +99,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
  function chooseFiles(files:File[]){
   if(operation.current)return;setError("");setNotice("");
   if(files.length>100){setError("Choose up to 100 books per batch.");return;}
-  setItems(files.map(file=>({file,state:validFile(file)?"waiting":"error",status:!/\.(pdf|epub)$/i.test(file.name)?"Choose a PDF or EPUB file.":file.size===0?"This file is empty.":file.size>50*1024*1024?"File exceeds 50 MB.":"Ready to upload"})));
+  setItems(files.map(file=>{const problem=fileProblem(file,limits);return {file,state:problem?"error":"waiting",status:problem||"Ready to upload"};}));
  }
  function clearUploads(){setItems([]);if(bookInput.current)bookInput.current.value="";}
  async function upload(){
@@ -107,7 +118,10 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
      // New books get a cover from their first page (PDF) or their own cover image (EPUB).
      if(!result.duplicate){
       setItems(list=>list.map((entry,i)=>i===index?{...entry,status:"Creating cover…"}:entry));
-      const image=await createCover(item.file,result.book.format);
+      // A converted MOBI book gets its cover from the EPUB the server made.
+      const converted=result.book.format==="epub"&&!/\.epub$/i.test(item.file.name);
+      const source=converted?await fetch("/api/books/"+result.book.id+"/file",{credentials:"same-origin",cache:"no-store",signal:controller.signal}).then(response=>response.ok?response.blob():null).catch(()=>null):item.file;
+      const image=source?await createCover(source,result.book.format):null;
       if(image&&!closed.current){try{await api("/api/admin/books/"+result.book.id+"/cover",{method:"PUT",body:image,signal:controller.signal,headers:{"Content-Type":image.type}});}catch{}}
       if(closed.current)break;
      }
@@ -195,7 +209,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
 
  return <Dialog open onOpenChange={open=>{if(!open&&!operation.current)onClose();}}>
   <DialogContent className="library-manager" onEscapeKeyDown={event=>{if(operation.current)event.preventDefault();}} onPointerDownOutside={event=>{if(operation.current)event.preventDefault();}}>
-   <DialogTitle>Library administration</DialogTitle><DialogDescription>Build the collection and manage employee access. Reading records stay with each employee account.</DialogDescription>
+   <DialogTitle>Library administration</DialogTitle><DialogDescription>Books and employee access.</DialogDescription>
    <div className="manager-tabs">
     <button aria-pressed={tab==="books"} disabled={busy} onClick={()=>setTab("books")}><BookOpen size={18}/> Book catalog</button>
     <button aria-pressed={tab==="employees"} disabled={busy} onClick={()=>setTab("employees")}><Users size={18}/> Employees</button>
@@ -206,11 +220,11 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
    {bulkProgress&&<div className="catalog-operation" role="status"><LoaderCircle size={18} className="reader-spinner"/> Updating books · {bulkProgress.completed} of {bulkProgress.total}<progress value={bulkProgress.completed} max={bulkProgress.total} aria-label="Selected books updated"/></div>}
    {loading?<div className="manager-loading" role="status"><LoaderCircle className="reader-spinner"/> Loading library records…</div>:tab==="books"?<>
     <div className="catalog-overview" aria-label="Catalog overview"><div><strong>{books.length}</strong><span>Total books</span></div><div><strong>{books.filter(book=>book.active!==false).length}</strong><span>Available</span></div><div><strong>{books.filter(book=>book.active===false).length}</strong><span>Archived</span></div><div><strong>{collections.length}</strong><span>Collections</span></div></div>
-    {storage&&<div className="catalog-storage"><div><strong>Library file storage</strong><span>{storageSize(storage.usedBytes)} of {storageSize(storage.limitBytes)} used · {storageSize(storage.limitBytes-storage.usedBytes)} available</span></div><progress value={Math.min(storage.usedBytes,storage.limitBytes)} max={storage.limitBytes||1} aria-label="Library file storage used"/><p>Archived files still use library storage. Employee reading records are kept.</p></div>}
+    {storage&&<div className="catalog-storage"><div><strong>Library file storage</strong><span>{storageSize(storage.usedBytes)} of {storageSize(storage.limitBytes)} used · {storageSize(storage.limitBytes-storage.usedBytes)} available</span></div><progress value={Math.min(storage.usedBytes,storage.limitBytes)} max={storage.limitBytes||1} aria-label="Library file storage used"/></div>}
     <section className="bulk-panel">
-     <div><span className="shelf-kicker">GROW THE COLLECTION</span><h3>Add books in a batch.</h3><p>Select or drop up to 100 PDF/EPUB files. Each book can be up to 50 MB. Matching files are skipped automatically.</p></div>
+     <div><h3>Add books in a batch.</h3><p>Select or drop up to 100 {limits.convertsMobi?"PDF, EPUB or MOBI":"PDF/EPUB"} files. Each book can be up to {fileSizeLimit(limits)}.{limits.convertsMobi?" MOBI and Kindle books are converted to EPUB.":""} Matching files are skipped automatically.</p></div>
      <fieldset disabled={busy} className="catalog-fieldset"><div className="bulk-defaults"><label>Collection<input value={category} onChange={event=>setCategory(event.target.value)} maxLength={80}/></label><label>Author / publisher<input value={author} onChange={event=>setAuthor(event.target.value)} maxLength={200}/></label><label>Book language<select value={language} onChange={event=>setLanguage(event.target.value)}>{Object.entries(languageNames).map(([code,name])=><option value={code} key={code}>{name}</option>)}</select></label></div>
-      <label className="bulk-drop" onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();chooseFiles(Array.from(event.dataTransfer.files));}}><Upload size={26}/><strong>Drop books here or choose files</strong><span>PDF & EPUB · multiple files supported</span><input ref={bookInput} type="file" multiple accept=".pdf,.epub" aria-label="Choose books for bulk upload" onChange={event=>chooseFiles(Array.from(event.target.files||[]))}/></label>
+      <label className="bulk-drop" onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();chooseFiles(Array.from(event.dataTransfer.files));}}><Upload size={26}/><strong>Drop books here or choose files</strong><span>{limits.convertsMobi?"PDF, EPUB & MOBI":"PDF & EPUB"} · multiple files supported</span><input ref={bookInput} type="file" multiple accept={limits.convertsMobi?".pdf,.epub,.mobi,.azw,.azw3":".pdf,.epub"} aria-label="Choose books for bulk upload" onChange={event=>chooseFiles(Array.from(event.target.files||[]))}/></label>
      </fieldset>
      {!!items.length&&<>
       <div className="batch-upload-summary"><p role="status">{uploading?"Uploading your batch…":`${successfulUploads} ready in the library · ${items.filter(item=>item.state==="error").length} need attention · ${items.filter(item=>item.state==="waiting").length} waiting`}</p><progress value={processedUploads} max={items.length} aria-label="Files processed"/><span>{processedUploads} of {items.length} processed</span></div>
@@ -218,7 +232,7 @@ export default function LibraryManager({library,onClose,onBusyChange}:{library:E
       <div className="bulk-actions"><span>Completed files are skipped when you retry.</span>{uploading?<button className="toolbar-button" onClick={()=>uploadController.current?.abort()}>Cancel remaining uploads</button>:<div className="upload-batch-actions"><button className="toolbar-button" disabled={busy} onClick={clearUploads}>Clear batch</button><button className="primary-button" disabled={busy||!retryableUploads||!category.trim()||!author.trim()} onClick={()=>void upload()}><Upload size={17}/> {items.some(item=>item.state==="error")?"Upload / retry":"Upload"} {retryableUploads} books</button></div>}</div>
      </>}
     </section>
-    <div className="manager-section-title catalog-section-heading"><div><h3>Manage the catalog</h3><p>{filteredBooks.length} of {books.length} books match. Edit metadata, organize collections, or archive books.</p></div><div className="catalog-heading-buttons">{missingCovers.length>0&&<button className="toolbar-button" disabled={busy||loading||!catalogReady} onClick={()=>void createMissingCovers()}><ImagePlus size={17}/> Create {missingCovers.length} missing {missingCovers.length===1?"cover":"covers"}</button>}<button className="toolbar-button" disabled={busy||loading||!catalogReady||!filteredBooks.length} onClick={exportCatalog}><Download size={17}/> Export all {filteredBooks.length} results CSV</button></div></div>
+    <div className="manager-section-title catalog-section-heading"><div><h3>Manage the catalog</h3><p>{filteredBooks.length} of {books.length} books match.</p></div><div className="catalog-heading-buttons">{missingCovers.length>0&&<button className="toolbar-button" disabled={busy||loading||!catalogReady} onClick={()=>void createMissingCovers()}><ImagePlus size={17}/> Create {missingCovers.length} missing {missingCovers.length===1?"cover":"covers"}</button>}<button className="toolbar-button" disabled={busy||loading||!catalogReady||!filteredBooks.length} onClick={exportCatalog}><Download size={17}/> Export all {filteredBooks.length} results CSV</button></div></div>
     {!catalogReady&&<p className="catalog-stale">These are the last loaded records. Refresh successfully before exporting the catalog.</p>}
     <fieldset disabled={busy} className="catalog-fieldset"><div className="manager-catalog-tools catalog-control-grid">
      <label className="catalog-admin-search">Search catalog<input aria-label="Search administration catalog" placeholder="Title, author or description…" value={bookQuery} onChange={event=>changeBookFilter(setBookQuery,event.target.value)}/></label>

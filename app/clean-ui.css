@@ -1,0 +1,99 @@
+/* A quieter, reader-first layout. Loaded last, so these rules refine the earlier styles. */
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Header */
+.room-header .brand > div { font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.account-sync.is-synced { color: #2f7d4f; padding: 0 6px; }
+.account-button small { display: none; }
+
+/* Sign-in: one card, nothing else competing for attention */
+.entry-simple { min-height: 100dvh; display: flex; flex-direction: column; background: #f6f7f9; }
+.entry-simple .entry-header span { font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.entry-simple .entry-main { flex: 1; display: grid; grid-template-columns: 1fr; place-items: center; max-width: none; padding: 32px 20px 64px; }
+.entry-simple .entry-card { width: min(420px, 100%); padding: 34px 32px; border-radius: 16px; background: #fff; border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(20, 24, 40, .07); }
+.entry-simple .entry-card h1 { font-size: 30px; line-height: 1.15; letter-spacing: -.6px; margin: 0 0 6px; }
+.entry-simple .entry-card > p { color: var(--muted-foreground); margin: 0 0 24px; font-size: 15px; }
+.entry-simple .sign-in-help { font-size: 13px; color: var(--muted-foreground); margin: 16px 0 0; text-align: center; }
+.entry-simple .guest-button { margin: 20px 0 0; width: 100%; justify-content: center; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; font-weight: 600; }
+
+/* Shelf */
+.employee-library { padding-top: 30px; }
+.shelf-heading { justify-content: flex-start; align-items: center; gap: 14px; margin-bottom: 24px; }
+.shelf-heading h1 { font-size: 30px; margin: 0; }
+.shelf-streak-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; background: #fff3e2; color: #a6570c; font-size: 13px; font-weight: 600; }
+.continue-strip { margin-bottom: 36px; }
+.continue-strip .shelf-kicker { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; }
+.catalog-heading h2 { font-size: 22px; }
+.catalog-filter-summary { margin-top: 4px; }
+.shelf-tabs button { gap: 8px; }
+
+/* Book cards: the cover leads; details stay short */
+.catalog-grid:not(.catalog-list) { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 30px 24px; }
+.catalog-grid:not(.catalog-list) .catalog-book { background: transparent; border: 0; box-shadow: none; padding: 0; overflow: visible; }
+.catalog-grid:not(.catalog-list) .catalog-book:hover { transform: none; }
+.catalog-grid:not(.catalog-list) .catalog-cover { width: 100%; height: auto; aspect-ratio: 3 / 4; padding: 0; border-radius: 10px; overflow: hidden; box-shadow: 0 8px 20px rgba(20, 24, 40, .12); transition: transform .18s ease, box-shadow .18s ease; }
+.catalog-grid:not(.catalog-list) .catalog-cover:hover { transform: translateY(-3px); box-shadow: 0 14px 28px rgba(20, 24, 40, .16); }
+.catalog-grid:not(.catalog-list) .catalog-cover img { width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: top; box-shadow: none; border-radius: 0; }
+.catalog-grid:not(.catalog-list) .catalog-cover:not(:has(img)) { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 18px; text-align: left; }
+.catalog-grid:not(.catalog-list) .catalog-book-body { padding: 12px 2px 0; display: grid; gap: 3px; }
+.catalog-book h3 { font-size: 15px; line-height: 1.3; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.catalog-author { font-size: 13px; color: var(--muted-foreground); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.card-progress .book-progress { flex: 1; height: 4px; margin: 0; }
+.card-progress small { font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.card-done { display: flex; align-items: center; gap: 5px; margin: 6px 0 0; font-size: 12px; color: #2f7d4f; }
+.card-icons { display: flex; gap: 2px; margin: 6px 0 0 -8px; }
+.card-icons button { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.card-icons button:hover { background: var(--secondary); color: var(--foreground); }
+.card-icons button:focus-visible { outline: 3px solid var(--brand-primary); outline-offset: 1px; }
+.card-icons .is-favorite { color: #c92a5b; }
+.card-icons .is-saved { color: var(--brand-primary); }
+.card-icons button:disabled { opacity: .45; cursor: default; }
+.shelf-footer { justify-content: center; gap: 12px; border: 0; padding-top: 36px; color: var(--muted-foreground); font-size: 14px; }
+.link-button { background: none; border: 0; padding: 8px; color: var(--brand-primary); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Reader: the page gets the screen */
+.reading-room.book-open > .room-header { display: none; }
+.reading-room.book-open .reader { height: 100dvh; }
+.listen-toggle.is-active { background: var(--brand-soft); color: var(--brand-deep); border-color: transparent; }
+.reader-fullscreen { flex-shrink: 0; }
+.narration-bar { padding: 8px 3%; min-height: 0; gap: 12px; }
+.narration-caption { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.narration-caption strong { font-weight: 600; }
+.narration-actions { display: flex; align-items: center; gap: 8px; }
+.narration-actions .close-listen { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.narration-actions .close-listen:hover { background: var(--secondary); }
+.speech-notice { margin: 0; padding: 6px 3%; font-size: 13px; }
+.reader-bottom { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 8px 3%; min-height: 0; }
+.reader-bottom > button.page-turn { min-width: 0; }
+.reader-position { display: grid; gap: 2px; min-width: 0; }
+.reader-position .page-scrubber { margin: 0; padding: 4px 0 0; border: 0; background: none; }
+.reader-position-text { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted-foreground); }
+.reader-position-text .page-jump { display: flex; align-items: center; gap: 6px; }
+.reader-position-text .page-jump input { width: 64px; min-height: 34px; text-align: center; }
+.reader-progress { font-variant-numeric: tabular-nums; }
+.reader-sync { color: #a6570c; }
+.theme-night .reader-position-text { color: #a59cb5; }
+
+.entry-simple .entry-card .sign-in-help { margin-top: 14px; }
+.continue-strip .continue-cover { object-fit: cover; object-position: top; }
+
+@media (max-width: 600px) {
+  .reader-toolbar { gap: 4px; padding: 6px 8px; }
+  .reading-room .reader-toolbar > button, .reading-room .reader-toolbar .zoom-tools button { width: 40px; min-width: 40px; min-height: 40px; padding: 0; }
+  .reading-room .reader-toolbar .zoom-tools { gap: 0; padding: 0; }
+  .reading-room .reader-toolbar .reader-fullscreen, .reading-room .reader-toolbar .fit-toggle, .reading-room .reader-toolbar .zoom-tools > span { display: none; }
+  .reader-toolbar h1 { font-size: 14px; }
+}
+@media (max-width: 700px) {
+  .reader-bottom { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding: 6px 10px; }
+  .reader-bottom > button.page-turn span { display: none; }
+  .reader-bottom > button.page-turn { min-width: 48px; }
+  .reader-position-text .reader-progress { display: none; }
+  .shelf-heading h1 { font-size: 26px; }
+  .catalog-grid:not(.catalog-list) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .catalog-grid:not(.catalog-list) .catalog-cover, .catalog-grid:not(.catalog-list) .catalog-cover:hover { transition: none; transform: none; }
+}

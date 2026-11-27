@@ -72,7 +72,7 @@ Search bookmark names (and PDF page numbers), show only the current location, or
 
 Sign in as an administrator and choose **Manage library**.
 
-- Select/drop up to 100 PDFs/EPUBs per batch, at most 50 MB each. A progress meter and individual results show processed, successful, waiting and failed files. A failed file does not discard successful uploads. Cancel remaining uploads, remove unsuccessful files or retry the batch; completed files are skipped and identical contents are deduplicated.
+- Select/drop up to 100 PDFs/EPUBs per batch, at most 50 MB each by default (`LIBRARY_MAX_FILE_MB`, up to 512). When the server has Calibre, MOBI, AZW and AZW3 books are accepted too and converted to EPUB on upload; without it, the upload explains how to convert them first. A progress meter and individual results show processed, successful, waiting and failed files. A failed file does not discard successful uploads. Cancel remaining uploads, remove unsuccessful files or retry the batch; completed files are skipped and identical contents are deduplicated.
 - Assign collection, author and language defaults to each batch. Edit title, author, collection, description, language and availability afterward.
 - Covers are created automatically for new uploads: the first page of a PDF, or the cover image inside an EPUB. They are made in the administrator's browser with the reader's own PDF/EPUB engines and stored as small JPEGs; an EPUB without a cover image keeps the designed placeholder. **Create missing covers** does the same for books already in the catalog. Covers are served only to signed-in employees, with long-lived cache headers; a cover that cannot load (for example offline) falls back to the placeholder.
 - Archive and restore books. Archiving hides a book and its download endpoint without deleting its file or employee reading records.
@@ -93,9 +93,20 @@ EMP-001,Aiko Tanaka,replace-with-private-pin,employee
 EMP-002,Sudha,replace-with-another-pin,employee
 ```
 
+## Large libraries
+
+The library is sized for up to 10,000 books and about 100 employees reading at the same time on a modest server (4 cores, 32 GB memory, mirrored SSDs).
+
+- **Book delivery.** Readers ask for books in byte ranges (the PDF reader uses 256 KB pieces), and the server sends only those bytes. Books stored in the database are read one megabyte at a time, so a large PDF never loads whole into memory.
+- **Books on disk.** Set `LIBRARY_BOOKS_DIR` to a folder on persistent storage (for example `/srv/library/books`) and new uploads are saved there as files named by their SHA-256 digest, with only the details kept in the database. This keeps the database small and backups fast. Do not use it on hosts whose disk is wiped on redeploy, such as Render's free web service.
+- **Moving existing books.** After setting `LIBRARY_BOOKS_DIR`, run `npm run library:move-books` with the same `DATABASE_URL` (or `LIBRARY_SQLITE_PATH`). It moves one book at a time and is safe to stop and run again. With PostgreSQL, run `VACUUM FULL library_books;` afterwards to return the freed space to the disk. Back up both the database and the books folder.
+- **MOBI and Kindle books.** Install Calibre on the server. The library finds `ebook-convert` on the PATH, or set `LIBRARY_EBOOK_CONVERT` to its full path (on Windows, for example `C:\Program Files\Calibre2\ebook-convert.exe`). Uploads are converted one at a time, with a three-minute limit each. Books with copy protection (DRM) cannot be converted. A repeated upload of the same MOBI file is recognised before any conversion.
+- **Catalogue.** Catalogue replies larger than 16 KB are compressed with Brotli or gzip, and carry an ETag, so a returning employee whose catalogue has not changed gets a short 304 reply. The offline copy of a very large catalogue keeps shortened descriptions if browser storage runs short.
+- **Health check.** `/api/health` reports the database (`storage`), where book files live (`files`: `database` or `disk`) and whether MOBI conversion is available (`convertsMobi`).
+
 ## Persistent storage and security
 
-The backend uses SQLite locally and PostgreSQL in production with the same schema. Uploaded book bytes live in the database and survive service restarts and redeploys. Default upload storage budget: 1 GB. Set `LIBRARY_MAX_BYTES` to fit the capacity of the chosen database. The administration storage meter reports this book-file budget; leave space for database records, indexes and backups when choosing it. Notes are limited to 20,000 characters. Local data, credentials and environment files are ignored by Git.
+The backend uses SQLite locally and PostgreSQL in production with the same schema. By default, uploaded book bytes live in the database and survive service restarts and redeploys; on a server with its own disk, `LIBRARY_BOOKS_DIR` stores them as files instead (see Large libraries below). Default upload storage budget: 1 GB. Set `LIBRARY_MAX_BYTES` to fit the capacity of the chosen database. The administration storage meter reports this book-file budget; leave space for database records, indexes and backups when choosing it. Notes are limited to 20,000 characters. Local data, credentials and environment files are ignored by Git.
 
 Production requires `DATABASE_URL`; first startup also requires `LIBRARY_ADMIN_ID` and `LIBRARY_ADMIN_PIN` (at least 6 characters). Optional `LIBRARY_ADMIN_NAME` names the initial administrator. The production server refuses ephemeral SQLite. PostgreSQL TLS options belong in the connection URL; the app does not disable certificate verification.
 

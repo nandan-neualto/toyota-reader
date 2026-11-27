@@ -67,7 +67,8 @@ export default function PDFReader({book,page,zoom,fit,view,onReady,onText,onErro
    lib.GlobalWorkerOptions.workerSrc="/vendor/pdf.worker.mjs";
    const source=book.file?{data:new Uint8Array(await book.file.arrayBuffer())}:{url:book.url!};
    if(dead)return;
-   const task=lib.getDocument({...source,cMapUrl:"/vendor/cmaps/",cMapPacked:true,standardFontDataUrl:"/vendor/standard_fonts/",wasmUrl:"/vendor/wasm/"});
+   // Shared books arrive in 256 KB ranges, so a large PDF shows its first page without downloading the whole file.
+   const task=lib.getDocument({...source,rangeChunkSize:262144,cMapUrl:"/vendor/cmaps/",cMapPacked:true,standardFontDataUrl:"/vendor/standard_fonts/",wasmUrl:"/vendor/wasm/"});
    destroy=()=>{void task.destroy();};
    doc=await task.promise;if(dead){destroy();return;}
    const outline=await doc.getOutline();const toc:TocEntry[]=[];
