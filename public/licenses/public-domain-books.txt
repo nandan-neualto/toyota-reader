@@ -1,0 +1,77 @@
+Built-in library books
+
+These books are in the public domain in the United States and come from Project Gutenberg (https://www.gutenberg.org).
+Each EPUB keeps its Project Gutenberg header and licence. Generated pattern covers were replaced with plain library covers; the text is unchanged.
+
+My Life and Work - Henry Ford with Samuel Crowther
+  https://www.gutenberg.org/ebooks/7213
+The Principles of Scientific Management - Frederick Winslow Taylor
+  https://www.gutenberg.org/ebooks/6435
+Shop Management - Frederick Winslow Taylor
+  https://www.gutenberg.org/ebooks/6464
+On the Economy of Machinery and Manufactures - Charles Babbage
+  https://www.gutenberg.org/ebooks/4238
+The Wealth of Nations - Adam Smith
+  https://www.gutenberg.org/ebooks/3300
+Psychology and Industrial Efficiency - Hugo Münsterberg
+  https://www.gutenberg.org/ebooks/15154
+Industrial Progress and Human Economics - James Hartness
+  https://www.gutenberg.org/ebooks/11090
+The Psychology of Management - Lillian M. Gilbreth
+  https://www.gutenberg.org/ebooks/16256
+Fatigue Study - Frank B. Gilbreth and Lillian M. Gilbreth
+  https://www.gutenberg.org/ebooks/67908
+James Watt - Andrew Carnegie
+  https://www.gutenberg.org/ebooks/26131
+Henry Ford’s Own Story - Rose Wilder Lane
+  https://www.gutenberg.org/ebooks/46121
+The Locomotive - Samuel Smiles
+  https://www.gutenberg.org/ebooks/27710
+Industrial Biography - Samuel Smiles
+  https://www.gutenberg.org/ebooks/404
+Men of Invention and Industry - Samuel Smiles
+  https://www.gutenberg.org/ebooks/725
+James Nasmyth, Engineer - James Nasmyth
+  https://www.gutenberg.org/ebooks/476
+Gas and Oil Engines, Simply Explained - Walter C. Runciman
+  https://www.gutenberg.org/ebooks/27286
+Motor-Car Principles - Roger B. Whitman
+  https://www.gutenberg.org/ebooks/70194
+Turning and Boring - Franklin D. Jones
+  https://www.gutenberg.org/ebooks/34030
+Steam, Steel and Electricity - James W. Steele
+  https://www.gutenberg.org/ebooks/7886
+Hand-Loom Weaving - Mattie Phipps Todd
+  https://www.gutenberg.org/ebooks/31630
+Tappet and Dobby Looms - Thomas Roberts
+  https://www.gutenberg.org/ebooks/33176
+Self-Help - Samuel Smiles
+  https://www.gutenberg.org/ebooks/935
+Character - Samuel Smiles
+  https://www.gutenberg.org/ebooks/2541
+The Autobiography of Benjamin Franklin - Benjamin Franklin
+  https://www.gutenberg.org/ebooks/148
+Meditations - Marcus Aurelius
+  https://www.gutenberg.org/ebooks/2680
+As a Man Thinketh - James Allen
+  https://www.gutenberg.org/ebooks/4507
+Acres of Diamonds - Russell H. Conwell
+  https://www.gutenberg.org/ebooks/368
+Pushing to the Front - Orison Swett Marden
+  https://www.gutenberg.org/ebooks/21291
+The Japanese Spirit - Yoshisaburo Okakura
+  https://www.gutenberg.org/ebooks/34341
+Kokoro - Lafcadio Hearn
+  https://www.gutenberg.org/ebooks/8882
+Bushido - Inazo Nitobe
+  https://www.gutenberg.org/ebooks/12096
+The Book of Tea - Kakuzo Okakura
+  https://www.gutenberg.org/ebooks/769
+Japan - Lafcadio Hearn
+  https://www.gutenberg.org/ebooks/5979
+Glimpses of Unfamiliar Japan - Lafcadio Hearn
+  https://www.gutenberg.org/ebooks/8130
+The Art of War - Sun Tzu, translated by Lionel Giles
+  https://www.gutenberg.org/ebooks/132
+The Art of Public Speaking - J. Berg Esenwein and Dale Carnegie
+  https://www.gutenberg.org/ebooks/16317

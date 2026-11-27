@@ -93,6 +93,15 @@ EMP-001,Aiko Tanaka,replace-with-private-pin,employee
 EMP-002,Sudha,replace-with-another-pin,employee
 ```
 
+## Built-in books
+
+Besides *The Toyota Way to Continuous Improvement*, the library ships with 36 public-domain classics from Project Gutenberg, chosen for their links to Toyota. They are grouped into seven collections: Manufacturing & management, Inventors & engineers, Machines & engines, Looms & weaving, Character & habits, Japanese culture, and Leadership & strategy. Titles include Henry Ford's *My Life and Work*, Taylor's *The Principles of Scientific Management*, Lillian Gilbreth's *The Psychology of Management*, and Samuel Smiles's *Self-Help*, which inspired Sakichi Toyoda.
+
+- The files are in `public/books/library`, listed in `lib/bundled-books.json`. On startup the server adds any that are missing from the catalogue. It never re-adds or overwrites one an administrator has edited or archived.
+- Guests can read them too. They are not stored on every device in advance: each book downloads when it is opened or saved offline.
+- They are dated 1 January 2000, so books uploaded by administrators always appear before them under "Recently added".
+- Sources and licence notes are in `public/licenses/public-domain-books.txt`.
+
 ## Large libraries
 
 The library is sized for up to 10,000 books and about 100 employees reading at the same time on a modest server (4 cores, 32 GB memory, mirrored SSDs).

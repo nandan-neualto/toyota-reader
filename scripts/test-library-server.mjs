@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLibraryServer } from '../server/library-server.mjs';
 import { openDatabase } from '../server/database.mjs';
 import { clientAddress } from '../server/client-address.mjs';
 import { samplePdf, sampleEpub } from './library-fixtures.mjs';
+const bundledCount = JSON.parse(readFileSync(new URL('../lib/bundled-books.json', import.meta.url), 'utf8')).length;
 
 test('employee library accounts, files and saved progress',async t=>{
  const directory=mkdtempSync(join(tmpdir(),'toyota-library-test-'));
@@ -64,7 +65,7 @@ test('employee library accounts, files and saved progress',async t=>{
   await t.test('saved accounts, books and reading positions survive server restart',async()=>{
    await app.close();app=await createLibraryServer(config);await listen();
    const profile=await request('/api/profile',{cookie:alice});assert.equal(profile.status,200);assert.equal(profile.data.records[book.id].page,2);assert.equal(profile.data.records[epub.id].cfi,'epubcfi(/6/2!/4/2/1:10)');
-   assert.equal((await request('/api/catalog',{cookie:bob})).data.books.length,3);
+   assert.equal((await request('/api/catalog',{cookie:bob})).data.books.length,3+bundledCount);
   });
   await t.test('PIN changes, paused access and sign-out revoke sessions',async()=>{
    const directory=(await request('/api/admin/employees',{cookie:admin})).data.employees;const bobUser=directory.find(u=>u.employeeId==='EMP-02');

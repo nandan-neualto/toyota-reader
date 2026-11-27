@@ -1,6 +1,6 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
-import {featuredBook,type BookEntry} from "@/lib/catalog";
+import {bundledBook,bundledBooks,type BookEntry} from "@/lib/catalog";
 import {api,ApiError,bindEmployee,emptyRecord,readProfile,writeProfile,catalogCache,cachedFile,storeFile,type Employee,type ProfileStore,type ReadingRecord} from "@/lib/employee-library";
 
 import {trackReadingLocation,type ReadingLocation} from "@/lib/reading-progress.mjs";
@@ -8,7 +8,7 @@ import {addReadingTime} from "@/lib/reading-activity.mjs";
 
 export function useEmployeeLibrary(){
  const [user,setUser]=useState<Employee|null>(null),[checking,setChecking]=useState(true),[guest,setGuest]=useState(false);
- const [books,setBooks]=useState<BookEntry[]>([featuredBook]),[records,setRecords]=useState<ProfileStore["records"]>({});
+ const [books,setBooks]=useState<BookEntry[]>(bundledBooks),[records,setRecords]=useState<ProfileStore["records"]>({});
  const [historyBooks,setHistoryBooks]=useState<BookEntry[]>([]);
  const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const [pendingCount,setPendingCount]=useState(0),[syncing,setSyncing]=useState(false),[message,setMessage]=useState("");
@@ -63,7 +63,7 @@ export function useEmployeeLibrary(){
    store.current.records=merged;store.current.books=profile.books||catalog.books.filter(book=>!!merged[book.id]);setConflicts({...conflictRef.current});persist();void flush();
   }catch(error){
    if(epoch!==generation.current)return;
-   try{setBooks(catalogCache(employee.id));}catch{setBooks([featuredBook]);}
+   try{setBooks(catalogCache(employee.id));}catch{setBooks(bundledBooks);}
    setMessage(error instanceof ApiError?error.message:"The library is offline. Downloaded books and local progress remain available.");
   }
  },[publish,persist,flush]);
@@ -82,7 +82,7 @@ export function useEmployeeLibrary(){
   if(Object.keys(store.current.pending).length&&before!==Object.values(store.current.pending).map(p=>p.mutationId).join(','))await flush();
   const memoryOnly=!!person.current&&!storageWorks.current&&!!Object.keys(store.current.pending).length;
   if(memoryOnly)volatileProfiles.current[person.current!.id]=store.current;
-  generation.current++;person.current=null;setUser(null);setGuest(false);setHistoryBooks([]);store.current={records:{},pending:{}};setRecords({});setPendingCount(0);setSyncing(false);conflictRef.current={};setConflicts({});setBooks([featuredBook]);setMessage("");
+  generation.current++;person.current=null;setUser(null);setGuest(false);setHistoryBooks([]);store.current={records:{},pending:{}};setRecords({});setPendingCount(0);setSyncing(false);conflictRef.current={};setConflicts({});setBooks(bundledBooks);setMessage("");
   if(signoutId)channelRef.current?.postMessage({type:"sign-out",id:signoutId});
   try{localStorage.setItem("toyota-library-signed-out",signoutId||"1");}catch{}
   try{await api("/api/logout",{method:"POST",body:"{}",signal:AbortSignal.timeout(8000),headers:signoutId?{"X-Library-User":signoutId}:{}});localStorage.removeItem("toyota-library-signed-out");if(memoryOnly)setMessage("Some changes are only in this tab. Keep it open and sign in again when online to sync them.");}catch{setMessage(memoryOnly?"Some changes are only in this tab. Keep it open and sign in again when online to sync them.":"You are signed out on this screen. Reconnect so the server can finish ending your session.");}finally{bindEmployee(null);closingNow.current=false;setClosing(false);setChecking(false);}
@@ -117,12 +117,14 @@ export function useEmployeeLibrary(){
   try{catalogCache(employee.id,catalog.books);}catch{}
  },[persist]);
  const loadBook=useCallback(async(book:BookEntry)=>{
-  if(!person.current||book.file)return book;
-  const id=person.current.id;
-  // Bundled files already have a service-worker copy and can stream directly.
-  if(book.id===featuredBook.id)return {...book,url:featuredBook.url};
-  let file:File|undefined;try{file=await cachedFile(id,book.id);}catch{}
-  if(!file){const response=await fetch(book.url!,{credentials:"same-origin",cache:"no-store",headers:{"X-Library-User":id}});if(!response.ok)throw new Error("This book is unavailable. Reconnect or ask the library administrator.");file=new File([await response.blob()],book.title+"."+book.format,{type:book.format==="pdf"?"application/pdf":"application/epub+zip"});}
+  if(book.file)return book;
+  const id=person.current?.id;
+  // Bundled books are public files: the PDF streams directly, and guests can open the EPUBs too.
+  const bundled=bundledBook(book.id);
+  if(bundled?.format==="pdf")return {...book,url:bundled.url};
+  if(!bundled&&!id)return book;
+  let file:File|undefined;if(id)try{file=await cachedFile(id,book.id);}catch{}
+  if(!file){const response=bundled?await fetch(bundled.url!):await fetch(book.url!,{credentials:"same-origin",cache:"no-store",headers:{"X-Library-User":id!}});if(!response.ok)throw new Error("This book is unavailable. Reconnect or ask the library administrator.");file=new File([await response.blob()],book.title+"."+book.format,{type:book.format==="pdf"?"application/pdf":"application/epub+zip"});}
   return {...book,file};
  },[]);
  const download=useCallback(async(book:BookEntry)=>{if(!person.current)return;const id=person.current.id,entry=await loadBook(book);let file=entry.file;if(!file){const response=await fetch(entry.url!);if(!response.ok)throw new Error("The book could not be downloaded.");file=new File([await response.blob()],book.title+"."+book.format);}if(person.current?.id!==id)throw new Error("Your account changed before the download finished. Try again after signing in.");await storeFile(id,book.id,file);},[loadBook]);

@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, createHash, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import { createReadStream, writeFileSync } from 'node:fs';
+import { createReadStream, readFileSync, writeFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,6 +15,8 @@ import {normalizeReadRanges,mergeReadingHistory} from '../lib/reading-progress.m
 import {cleanReadingPlan} from '../lib/reading-plans.mjs';
 import {cleanActivity} from '../lib/reading-activity.mjs';
 
+// Public-domain books shipped in public/books/library; the reader uses the same list for guests.
+const bundledBooks = JSON.parse(readFileSync(new URL('../lib/bundled-books.json', import.meta.url), 'utf8'));
 const derive = promisify(scrypt), now = () => new Date().toISOString(), gzipAsync = promisify(gzip), brotliAsync = promisify(brotliCompress);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const publicUser = row => ({ id: row.id, employeeId: row.employee_id, name: row.name, role: row.role, active: !!row.active });
@@ -129,7 +131,9 @@ export async function createLibraryServer(options = {}) {
       if(!options.sqlitePath&&!process.env.LIBRARY_SQLITE_PATH&&!databaseUrl)writeFileSync('.library-data/local-admin.txt',`Toyota local library administrator\nEmployee ID: ${id}\nPIN: ${password}\n\nThis file is ignored by Git. Change the PIN from your account after signing in.\n`,{mode:0o600});
     }
   }
-  await db.query(`INSERT INTO library_books(id,title,author,category,description,language,format,active,digest,byte_size,data,source_url,cover,pages,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,0,NULL,$9,$10,481,$11) ON CONFLICT(id) DO NOTHING`, ['toyota-way-continuous-improvement','The Toyota Way to Continuous Improvement','Jeffrey K. Liker & James K. Franz','Continuous improvement','Linking Strategy and Operational Excellence to Achieve Superior Performance','en','pdf','bundled-toyota-way','/books/toyota-way-continuous-improvement.pdf','/books/toyota-way-cover.jpg',now()]);
+  await db.query(`INSERT INTO library_books(id,title,author,category,description,language,format,active,digest,byte_size,data,source_url,cover,pages,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,0,NULL,$9,$10,481,$11) ON CONFLICT DO NOTHING`, ['toyota-way-continuous-improvement','The Toyota Way to Continuous Improvement','Jeffrey K. Liker & James K. Franz','Continuous improvement','Linking Strategy and Operational Excellence to Achieve Superior Performance','en','pdf','bundled-toyota-way','/books/toyota-way-continuous-improvement.pdf','/books/toyota-way-cover.jpg',now()]);
+  // Built-in books are added once; an administrator's later edits or archiving are kept. Dated 2000, they sort after uploads.
+  for (const book of bundledBooks) await db.query(`INSERT INTO library_books(id,title,author,category,description,language,format,active,digest,byte_size,data,source_url,cover,pages,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,0,NULL,$9,$10,NULL,$11) ON CONFLICT DO NOTHING`, [book.id, book.title, book.author, book.category, book.description, book.language, book.format, book.digest, book.url, book.cover, book.addedAt]);
   const attempts = new Map();
   const cleanup = setInterval(() => { for (const [key, value] of attempts) if (Date.now() > value.until) attempts.delete(key); void db.query('DELETE FROM library_sessions WHERE expires_at<$1', [now()]).catch(() => {}); }, 60000); cleanup.unref();
   async function authenticate(req) {
