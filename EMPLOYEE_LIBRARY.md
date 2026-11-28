@@ -85,6 +85,26 @@ Sign in as an administrator and choose **Manage library**.
 - Pause/reactivate access or reset a PIN. PIN resets and paused access revoke existing sessions. The signed-in administrator's own access cannot be paused through the directory.
 - View reader counts per book. Private notes remain available only to their employee account.
 
+### Content management
+
+The same window has four more tabs for running the library day to day:
+
+- **Home page.**
+  - A welcome line under the greeting.
+  - Up to 10 announcements. Each has a title, a message, a Standard or Important style, optional start and end dates, and an optional link that opens a book. Employees can dismiss an announcement; it stays dismissed on that device.
+  - A **Staff picks** row of up to 24 books, with its own title and order. Archived or removed books cannot be saved as picks or links.
+  - Changes are saved together as one version. If another administrator saved in the meantime, their version is loaded and nothing is overwritten.
+- **Collections.**
+  - Set the order collections appear in the filter and as shortcuts on the shelf.
+  - Add a short description, shown when an employee chooses that collection.
+  - Rename a collection, which moves all its books. Renaming onto an existing name merges the two.
+- **Insights.**
+  - Reading across the library for the last 7, 30 or 90 days: active readers, hours read, books started and finished, accounts that have not started a book, minutes read each day, the most-read books, and reading by collection.
+  - Figures are totals only. The report never shows what an individual employee reads.
+- **Activity log.**
+  - Every administrator change, with who made it and when: books added, edited, archived, restored or given a cover; accounts added, paused, restored or given a new PIN; home page saves and collection renames.
+  - Entries are kept for a year.
+
 CSV example (replace the example PINs before using):
 
 ```csv

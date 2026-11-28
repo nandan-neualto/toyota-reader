@@ -49,6 +49,9 @@ export async function openDatabase({ databaseUrl, sqlitePath = '.library-data/li
     `CREATE TABLE IF NOT EXISTS library_books (id TEXT PRIMARY KEY, title TEXT NOT NULL, author TEXT NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, language TEXT NOT NULL, format TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, digest TEXT UNIQUE NOT NULL, byte_size INTEGER NOT NULL, data ${binary}, source_url TEXT, cover TEXT, pages INTEGER, created_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS library_reading (user_id TEXT NOT NULL REFERENCES library_users(id), book_id TEXT NOT NULL REFERENCES library_books(id), record TEXT NOT NULL, version INTEGER NOT NULL, mutation_id TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(user_id, book_id))`,
     `CREATE INDEX IF NOT EXISTS library_sessions_expiry ON library_sessions(expires_at)`,
+    `CREATE TABLE IF NOT EXISTS library_content (key TEXT PRIMARY KEY, value TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT)`,
+    `CREATE TABLE IF NOT EXISTS library_audit (id TEXT PRIMARY KEY, at TEXT NOT NULL, actor_id TEXT, actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, detail TEXT NOT NULL)`,
+    `CREATE INDEX IF NOT EXISTS library_audit_at ON library_audit(at)`,
   ]) await query(sql);
   // Columns added after the first release; existing libraries gain them on startup.
   const bookColumns = databaseUrl ? null : new Set((await query("SELECT name FROM pragma_table_info('library_books')")).map(row => row.name));

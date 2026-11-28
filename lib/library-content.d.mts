@@ -1,0 +1,10 @@
+export type Announcement = { id: string; title: string; message: string; bookId: string; tone: "info" | "important"; startsOn: string; endsOn: string };
+export type CollectionNote = { name: string; description: string };
+export type LibraryContent = { welcome: string; announcements: Announcement[]; picks: { title: string; bookIds: string[] }; collections: CollectionNote[] };
+export const CONTENT_LIMITS: { announcements: number; picks: number; collections: number };
+export function defaultContent(): LibraryContent;
+export function cleanContent(input: unknown): LibraryContent;
+export function activeAnnouncements(content: LibraryContent | null | undefined, today: string): Announcement[];
+export function orderCollections(names: Iterable<string>, content: LibraryContent | null | undefined): string[];
+export function collectionDescription(name: string, content: LibraryContent | null | undefined): string;
+export function renameCollectionContent(content: LibraryContent, from: string, to: string): LibraryContent;

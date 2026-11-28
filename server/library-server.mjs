@@ -14,6 +14,8 @@ import { CONVERTIBLE, createConverter, findConverter, isMobi } from './ebook-con
 import {normalizeReadRanges,mergeReadingHistory} from '../lib/reading-progress.mjs';
 import {cleanReadingPlan} from '../lib/reading-plans.mjs';
 import {cleanActivity} from '../lib/reading-activity.mjs';
+import {cleanContent,defaultContent,renameCollectionContent} from '../lib/library-content.mjs';
+import {summarizeLibrary} from '../lib/library-insights.mjs';
 
 // Public-domain books shipped in public/books/library; the reader uses the same list for guests.
 const bundledBooks = JSON.parse(readFileSync(new URL('../lib/bundled-books.json', import.meta.url), 'utf8'));
@@ -135,7 +137,24 @@ export async function createLibraryServer(options = {}) {
   // Built-in books are added once; an administrator's later edits or archiving are kept. Dated 2000, they sort after uploads.
   for (const book of bundledBooks) await db.query(`INSERT INTO library_books(id,title,author,category,description,language,format,active,digest,byte_size,data,source_url,cover,pages,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,0,NULL,$9,$10,NULL,$11) ON CONFLICT DO NOTHING`, [book.id, book.title, book.author, book.category, book.description, book.language, book.format, book.digest, book.url, book.cover, book.addedAt]);
   const attempts = new Map();
-  const cleanup = setInterval(() => { for (const [key, value] of attempts) if (Date.now() > value.until) attempts.delete(key); void db.query('DELETE FROM library_sessions WHERE expires_at<$1', [now()]).catch(() => {}); }, 60000); cleanup.unref();
+  const lockRow = db.kind === 'postgres' ? ' FOR UPDATE' : '';
+  const parseContent = value => { try { return { ...defaultContent(), ...JSON.parse(value) }; } catch { return defaultContent(); } };
+  // The home-page content is one versioned document, so two administrators cannot overwrite each other unnoticed.
+  async function lockContent(q) {
+    await q(`INSERT INTO library_content(key,value,version,updated_at,updated_by) VALUES('home',$1,0,$2,NULL) ON CONFLICT DO NOTHING`, [JSON.stringify(defaultContent()), now()]);
+    const [row] = await q(`SELECT value,version FROM library_content WHERE key='home'${lockRow}`);
+    return { content: parseContent(row.value), version: row.version };
+  }
+  const saveContent = (q, content, version, user) => q(`UPDATE library_content SET value=$1,version=$2,updated_at=$3,updated_by=$4 WHERE key='home'`, [JSON.stringify(content), version, now(), user.id]);
+  // Administrator changes are recorded for a year; a failed entry never undoes the change itself.
+  // Each entry gets a later time than the one before, so the log order is exact even within a millisecond.
+  let lastAudit = 0;
+  async function audit(user, action, target, detail = '') {
+    lastAudit = Math.max(Date.now(), lastAudit + 1);
+    try { await db.query('INSERT INTO library_audit(id,at,actor_id,actor,action,target,detail) VALUES($1,$2,$3,$4,$5,$6,$7)', [randomUUID(), new Date(lastAudit).toISOString(), user.id, `${user.name} (${user.employee_id})`, action, String(target).slice(0, 200), String(detail).slice(0, 500)]); }
+    catch (error) { console.error('Library activity log failed:', error.message); }
+  }
+  const cleanup = setInterval(() => { for (const [key, value] of attempts) if (Date.now() > value.until) attempts.delete(key); void db.query('DELETE FROM library_sessions WHERE expires_at<$1', [now()]).catch(() => {}); void db.query('DELETE FROM library_audit WHERE at<$1', [new Date(Date.now() - 400 * 86400000).toISOString()]).catch(() => {}); }, 60000); cleanup.unref();
   async function authenticate(req) {
     const token = /(?:^|;\s*)toyota_library=([a-f0-9]+)/.exec(req.headers.cookie || '')?.[1];
     if (!token) fail(401, 'Sign in to your employee library.');
@@ -197,6 +216,10 @@ export async function createLibraryServer(options = {}) {
         return send(res,200,{ok:true},{'Set-Cookie':cookie('',0)});
       }
       if (path === '/api/catalog' && method === 'GET') return send(res,200,{books:(await db.query(`SELECT ${bookColumns} FROM library_books WHERE active=1 ORDER BY created_at DESC,title`)).map(publicBook)},{},{etag:true});
+      if (path === '/api/content' && method === 'GET') {
+        const [row] = await db.query(`SELECT value,version,updated_at FROM library_content WHERE key='home'`);
+        return send(res,200,{content:row?parseContent(row.value):defaultContent(),version:row?.version??0,updatedAt:row?.updated_at??null},{},{etag:true});
+      }
       if (path === '/api/profile' && method === 'GET') {
         const rows = await db.query('SELECT book_id,record,version,mutation_id,updated_at FROM library_reading WHERE user_id=$1',[user.id]);
         const columns=bookColumns.split(',').map(column=>'b.'+column).join(',');
@@ -270,12 +293,17 @@ export async function createLibraryServer(options = {}) {
           });
         }catch(error){await store.discard(stored.fileKey);throw error;}
         if(result.duplicate)await store.discard(stored.fileKey);
+        else await audit(user,'book.add',result.book.title,format.toUpperCase()+(converted?', converted from '+extension.toUpperCase():''));
         return send(res,result.duplicate?200:201,result);
       }
       const edit=/^\/api\/admin\/books\/([\w-]+)$/.exec(path);
       if(edit&&method==='PUT') {
-        const input=await body(req); const [old]=await db.query('SELECT id FROM library_books WHERE id=$1',[edit[1]]); if(!old)fail(404,'Book unavailable.');
-        await db.query('UPDATE library_books SET title=$1,author=$2,category=$3,description=$4,language=$5,active=$6 WHERE id=$7',[string(input.title,'title'),string(input.author,'author'),string(input.category,'category',80),string(input.description??'','description',3000,false),string(input.language,'language',30),input.active===false?0:1,edit[1]]);
+        const input=await body(req); const [old]=await db.query('SELECT id,title,author,category,description,language,active FROM library_books WHERE id=$1',[edit[1]]); if(!old)fail(404,'Book unavailable.');
+        const next={title:string(input.title,'title'),author:string(input.author,'author'),category:string(input.category,'category',80),description:string(input.description??'','description',3000,false),language:string(input.language,'language',30),active:input.active===false?0:1};
+        await db.query('UPDATE library_books SET title=$1,author=$2,category=$3,description=$4,language=$5,active=$6 WHERE id=$7',[next.title,next.author,next.category,next.description,next.language,next.active,edit[1]]);
+        const changed=['title','author','category','description','language'].filter(key=>next[key]!==old[key]);
+        if(next.active!==Number(old.active))await audit(user,next.active?'book.restore':'book.archive',next.title);
+        if(changed.length)await audit(user,'book.edit',next.title,'Changed '+changed.join(', '));
         return send(res,200,{ok:true});
       }
       const cover=/^\/api\/admin\/books\/([\w-]+)\/cover$/.exec(path);
@@ -286,6 +314,7 @@ export async function createLibraryServer(options = {}) {
         const url=`/api/books/${cover[1]}/cover?v=${hash(bytes).slice(0,12)}`;
         await db.query('UPDATE library_books SET cover_data=$1,cover_type=$2,cover=$3 WHERE id=$4',[bytes,type,url,cover[1]]);
         const [row]=await db.query(`SELECT ${bookColumns} FROM library_books WHERE id=$1`,[cover[1]]);
+        await audit(user,'book.cover',row.title);
         return send(res,200,{book:publicBook(row)});
       }
       if(path==='/api/admin/employees'&&method==='GET') return send(res,200,{employees:(await db.query('SELECT id,employee_id,name,role,active,created_at FROM library_users ORDER BY name')).map(publicUser)});
@@ -296,7 +325,7 @@ export async function createLibraryServer(options = {}) {
         for(const entry of entries)try {
           const id=employeeId(entry.employeeId), name=string(entry.name,'name',100), role=entry.role==='admin'?'admin':'employee', password=await pinHash(pin(entry.pin));
           const [old]=await db.query('SELECT id FROM library_users WHERE employee_id=$1',[id]);if(old){results.push({employeeId:id,error:'ID already exists. Use Reset PIN to change access.'});continue;}
-          await db.query('INSERT INTO library_users(id,employee_id,name,role,pin_hash,active,created_at) VALUES($1,$2,$3,$4,$5,1,$6)',[randomUUID(),id,name,role,password,now()]); results.push({employeeId:id,ok:true});
+          await db.query('INSERT INTO library_users(id,employee_id,name,role,pin_hash,active,created_at) VALUES($1,$2,$3,$4,$5,1,$6)',[randomUUID(),id,name,role,password,now()]); results.push({employeeId:id,ok:true});await audit(user,'employee.add',`${name} (${id})`,role==='admin'?'Administrator':'Employee');
         }catch(error){results.push({employeeId:String(entry?.employeeId??''),error:error.status?error.message:'Could not create this account. Try again.'});}
         return send(res,200,{results});
       }
@@ -304,12 +333,59 @@ export async function createLibraryServer(options = {}) {
       if(account&&method==='PUT') {
         const input=await body(req);if(account[1]===user.id)fail(400,'Use your profile to change your PIN. Your own administrator access cannot be changed here.');
         const password=input.pin?await pinHash(pin(input.pin)):null;
-        await db.transaction(async q=>{
-          const [old]=await q('SELECT id FROM library_users WHERE id=$1',[account[1]]);if(!old)fail(404,'Employee unavailable.');
+        const before=await db.transaction(async q=>{
+          const [old]=await q('SELECT id,name,employee_id,active FROM library_users WHERE id=$1',[account[1]]);if(!old)fail(404,'Employee unavailable.');
           await q('UPDATE library_users SET active=$1 WHERE id=$2',[input.active===false?0:1,account[1]]);
           if(password)await q('UPDATE library_users SET pin_hash=$1 WHERE id=$2',[password,account[1]]);
           if(password||input.active===false)await q('DELETE FROM library_sessions WHERE user_id=$1',[account[1]]);
-        });return send(res,200,{ok:true});
+          return old;
+        });
+        const who=`${before.name} (${before.employee_id})`,active=input.active!==false;
+        if(active!==!!Number(before.active))await audit(user,active?'employee.resume':'employee.pause',who);
+        if(password)await audit(user,'employee.pin',who,'PIN reset');
+        return send(res,200,{ok:true});
+      }
+      if(path==='/api/admin/content'&&method==='PUT') {
+        const input=await body(req,256*1024);let content;
+        try{content=cleanContent(input.content);}catch(error){fail(400,error.message);}
+        if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<0)fail(400,'Invalid content version.');
+        const chosen=[...new Set([...content.picks.bookIds,...content.announcements.map(item=>item.bookId).filter(Boolean)])];
+        if(chosen.length){const found=new Set((await db.query(`SELECT id FROM library_books WHERE active=1 AND id IN (${chosen.map((_,index)=>'$'+(index+1)).join(',')})`,chosen)).map(row=>row.id));if(chosen.some(id=>!found.has(id)))fail(400,'A chosen book is archived or no longer in the catalogue. Choose another.');}
+        const result=await db.transaction(async q=>{
+          const current=await lockContent(q);
+          if(current.version!==input.expectedVersion)return {status:409,content:current.content,version:current.version};
+          await saveContent(q,content,current.version+1,user);return {status:200,content,version:current.version+1};
+        });
+        if(result.status===409)return send(res,409,{content:result.content,version:result.version,error:'Another administrator changed the home page. Their version is now loaded; make your changes again.'});
+        await audit(user,'content.update','Home page',`${content.announcements.length} announcements · ${content.picks.bookIds.length} staff picks · ${content.collections.length} collection notes`);
+        return send(res,200,{content:result.content,version:result.version});
+      }
+      if(path==='/api/admin/collections/rename'&&method==='POST') {
+        const input=await body(req),from=string(input.from,'collection',80),to=string(input.to,'new collection name',80);
+        if(from===to)fail(400,'Choose a different name.');
+        const result=await db.transaction(async q=>{
+          const [count]=await q('SELECT COUNT(*) AS total FROM library_books WHERE category=$1',[from]);
+          await q('UPDATE library_books SET category=$1 WHERE category=$2',[to,from]);
+          const current=await lockContent(q),content=renameCollectionContent(current.content,from,to);
+          await saveContent(q,content,current.version+1,user);return {moved:Number(count.total),content,version:current.version+1};
+        });
+        await audit(user,'collection.rename',`${from} → ${to}`,`${result.moved} ${result.moved===1?'book':'books'}`);
+        return send(res,200,result);
+      }
+      if(path==='/api/admin/insights'&&method==='GET') {
+        const days=[7,30,90].includes(Number(url.searchParams.get('days')))?Number(url.searchParams.get('days')):30;
+        // The administrator's own calendar day, within a day of the server's, so the report matches local dates.
+        const asked=url.searchParams.get('today')||'',serverDay=now().slice(0,10);
+        const today=/^\d{4}-\d{2}-\d{2}$/.test(asked)&&Math.abs(Date.parse(asked)-Date.parse(serverDay))<=86400000?asked:serverDay;
+        const rows=await db.query('SELECT user_id,book_id,record FROM library_reading'),users=await db.query('SELECT id,active,role FROM library_users'),books=await db.query('SELECT id,title,author,category,active FROM library_books');
+        const parse=value=>{try{return JSON.parse(value);}catch{return null;}};
+        return send(res,200,summarizeLibrary({rows:rows.map(row=>({userId:row.user_id,bookId:row.book_id,record:parse(row.record)})),users:users.map(row=>({...row,active:!!Number(row.active)})),books:books.map(row=>({...row,active:!!Number(row.active)})),today,days}));
+      }
+      if(path==='/api/admin/activity'&&method==='GET') {
+        const limit=Math.min(200,Math.max(1,Number(url.searchParams.get('limit'))||100)),before=url.searchParams.get('before');
+        if(before&&(before.length>40||Number.isNaN(Date.parse(before))))fail(400,'Invalid date.');
+        const entries=before?await db.query('SELECT id,at,actor,action,target,detail FROM library_audit WHERE at<$1 ORDER BY at DESC LIMIT $2',[before,limit]):await db.query('SELECT id,at,actor,action,target,detail FROM library_audit ORDER BY at DESC LIMIT $1',[limit]);
+        return send(res,200,{entries,more:entries.length===limit});
       }
       fail(404,'Page unavailable.');
     }catch(error){ if(!res.headersSent)send(res,error.status||500,{error:error.status?error.message:'The library could not complete this request. Please try again.'});else res.end();if(!error.status)console.error('Library request failed:',error.message); }

@@ -5,11 +5,12 @@ import {api,ApiError,bindEmployee,emptyRecord,readProfile,writeProfile,catalogCa
 
 import {trackReadingLocation,type ReadingLocation} from "@/lib/reading-progress.mjs";
 import {addReadingTime} from "@/lib/reading-activity.mjs";
+import type {LibraryContent} from "@/lib/library-content.mjs";
 
 export function useEmployeeLibrary(){
  const [user,setUser]=useState<Employee|null>(null),[checking,setChecking]=useState(true),[guest,setGuest]=useState(false);
  const [books,setBooks]=useState<BookEntry[]>(bundledBooks),[records,setRecords]=useState<ProfileStore["records"]>({});
- const [historyBooks,setHistoryBooks]=useState<BookEntry[]>([]);
+ const [historyBooks,setHistoryBooks]=useState<BookEntry[]>([]),[content,setContent]=useState<LibraryContent|null>(null);
  const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const [pendingCount,setPendingCount]=useState(0),[syncing,setSyncing]=useState(false),[message,setMessage]=useState("");
  const [deviceSaved,setDeviceSaved]=useState(true),storageWorks=useRef(true);
@@ -17,6 +18,8 @@ export function useEmployeeLibrary(){
  const [conflicts,setConflicts]=useState<Record<string,ReadingRecord>>({});
  const person=useRef<Employee|null>(null),store=useRef<ProfileStore>({records:{},pending:{}}),running=useRef(false),generation=useRef(0),conflictRef=useRef<Record<string,ReadingRecord>>({});
  const volatileProfiles=useRef<Record<string,ProfileStore>>({});
+ // Home-page content (announcements, staff picks, collection notes) is optional: the library works without it.
+ const loadContent=useCallback(async(epoch:number)=>{try{const result=await api<{content:LibraryContent}>("/api/content");if(epoch===generation.current)setContent(result.content);}catch{}},[]);
  const channelRef=useRef<BroadcastChannel|null>(null),closingNow=useRef(false);
  const publish=useCallback(()=>{setRecords({...store.current.records});setHistoryBooks(store.current.books||[]);setPendingCount(Object.keys(store.current.pending).length);},[]);
  const persist=useCallback(()=>{if(!person.current)return;try{writeProfile(person.current.id,store.current);storageWorks.current=true;setDeviceSaved(true);}catch{storageWorks.current=false;setDeviceSaved(false);setMessage("Device storage is unavailable. Keep this page open until your changes reach the server.");}publish();},[publish]);
@@ -53,6 +56,7 @@ export function useEmployeeLibrary(){
    const [catalog,profile]=await Promise.all([api<{books:BookEntry[]}>("/api/catalog"),api<{records:ProfileStore["records"];books?:BookEntry[]}>("/api/profile")]);
    if(epoch!==generation.current)return;
    setBooks(catalog.books);try{catalogCache(employee.id,catalog.books);}catch{}
+   void loadContent(epoch);
    const merged={...profile.records};
    for(const [id,pending] of Object.entries(store.current.pending)){
     const cloud=profile.records[id]||emptyRecord();
@@ -66,7 +70,7 @@ export function useEmployeeLibrary(){
    try{setBooks(catalogCache(employee.id));}catch{setBooks(bundledBooks);}
    setMessage(error instanceof ApiError?error.message:"The library is offline. Downloaded books and local progress remain available.");
   }
- },[publish,persist,flush]);
+ },[publish,persist,flush,loadContent]);
  useEffect(()=>{let cancelled=false;void (async()=>{try{
    const signedOut=localStorage.getItem("toyota-library-signed-out");if(signedOut){try{await api("/api/logout",{method:"POST",body:"{}",headers:signedOut!=="1"?{"X-Library-User":signedOut}:{}});}catch(error){if(!(error instanceof ApiError&&error.status===401))throw error;}localStorage.removeItem("toyota-library-signed-out");return;}
    const response=await api<{user:Employee}>("/api/session");if(!cancelled)await adopt(response.user);
@@ -82,7 +86,7 @@ export function useEmployeeLibrary(){
   if(Object.keys(store.current.pending).length&&before!==Object.values(store.current.pending).map(p=>p.mutationId).join(','))await flush();
   const memoryOnly=!!person.current&&!storageWorks.current&&!!Object.keys(store.current.pending).length;
   if(memoryOnly)volatileProfiles.current[person.current!.id]=store.current;
-  generation.current++;person.current=null;setUser(null);setGuest(false);setHistoryBooks([]);store.current={records:{},pending:{}};setRecords({});setPendingCount(0);setSyncing(false);conflictRef.current={};setConflicts({});setBooks(bundledBooks);setMessage("");
+  generation.current++;person.current=null;setUser(null);setGuest(false);setHistoryBooks([]);store.current={records:{},pending:{}};setRecords({});setPendingCount(0);setSyncing(false);conflictRef.current={};setConflicts({});setBooks(bundledBooks);setContent(null);setMessage("");
   if(signoutId)channelRef.current?.postMessage({type:"sign-out",id:signoutId});
   try{localStorage.setItem("toyota-library-signed-out",signoutId||"1");}catch{}
   try{await api("/api/logout",{method:"POST",body:"{}",signal:AbortSignal.timeout(8000),headers:signoutId?{"X-Library-User":signoutId}:{}});localStorage.removeItem("toyota-library-signed-out");if(memoryOnly)setMessage("Some changes are only in this tab. Keep it open and sign in again when online to sync them.");}catch{setMessage(memoryOnly?"Some changes are only in this tab. Keep it open and sign in again when online to sync them.":"You are signed out on this screen. Reconnect so the server can finish ending your session.");}finally{bindEmployee(null);closingNow.current=false;setClosing(false);setChecking(false);}
@@ -115,7 +119,8 @@ export function useEmployeeLibrary(){
   if(epoch!==generation.current||person.current?.id!==employee.id)return;
   setBooks(catalog.books);store.current.books=profile.books||catalog.books.filter(book=>!!store.current.records[book.id]);persist();
   try{catalogCache(employee.id,catalog.books);}catch{}
- },[persist]);
+  await loadContent(epoch);
+ },[persist,loadContent]);
  const loadBook=useCallback(async(book:BookEntry)=>{
   if(book.file)return book;
   const id=person.current?.id;
@@ -128,6 +133,6 @@ export function useEmployeeLibrary(){
   return {...book,file};
  },[]);
  const download=useCallback(async(book:BookEntry)=>{if(!person.current)return;const id=person.current.id,entry=await loadBook(book);let file=entry.file;if(!file){const response=await fetch(entry.url!);if(!response.ok)throw new Error("The book could not be downloaded.");file=new File([await response.blob()],book.title+"."+book.format);}if(person.current?.id!==id)throw new Error("Your account changed before the download finished. Try again after signing in.");await storeFile(id,book.id,file);},[loadBook]);
- return {user,checking,closing,guest,setGuest,books,historyBooks,records,pendingCount,syncing,deviceSaved,message,conflicts,login,logout,update,recordLocation,recordReadingTime,flush,refresh,resolveConflict,loadBook,download};
+ return {user,checking,closing,guest,setGuest,content,setContent,books,historyBooks,records,pendingCount,syncing,deviceSaved,message,conflicts,login,logout,update,recordLocation,recordReadingTime,flush,refresh,resolveConflict,loadBook,download};
 }
 export type EmployeeLibrary=ReturnType<typeof useEmployeeLibrary>;
